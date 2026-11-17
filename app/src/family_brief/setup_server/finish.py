@@ -10,6 +10,7 @@ from .. import failure, ops, sending, setup_connect, setup_save, setup_status, u
 from ..config import Config
 from ..setup_connect import Strict, parse
 from ..system import wake
+from . import run_report
 from .context import Action, Context, Phase, Reply, nothing_to_give
 from .gmail import confirmation
 from .health import FINISH_CHECKS, FINISH_LEAVES_OUT, health_check
@@ -58,11 +59,13 @@ class Finish(Phase):
         Gmail once its SMTP server took the App Password, or through the gateway again, which
         asks for a send-only key and says who still has to confirm, as saving the Recipients does (ADR
         0033, ADR 0034). The reply leaves out why it didn't switch, which can name the address:
-        the page says each result in its own words."""
+        the page says each result in its own words. With it, the Run Report's switch as it is
+        now, which turning own-Gmail sending on can turn off and ask about (ADR 0048)."""
         answer = parse(SendingAnswer, raw)
         with self.context.connect.lock:
             done = sending.switch(self.context.config, answer.to)
-        out: dict[str, Any] = {"result": done.result, "sending": done.sending}
+        out: dict[str, Any] = {"result": done.result, "sending": done.sending,
+                               "run_report": run_report.shown(self.context.model())}
         if done.confirm is not None:
             out["confirm"] = confirmation(done.confirm)
         return HTTPStatus.OK, out

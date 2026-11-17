@@ -11,6 +11,7 @@ answers as JSON on stdin, every key optional:
    "ai": "claude",
    "evening": "21:00",
    "updates": true,
+   "run_report": true,
    "sources": {"gmail": {"address": "parent@gmail.com", "allowlist_domains": ["espoo.fi"]},
                "wilma": {"enabled": true},
                "whatsapp": {"enabled": true, "chats": [{"name": "3B", "id": "120363@g.us",
@@ -187,6 +188,10 @@ class Answers(_Strict):
     # Whether the program installs each new release by itself after the evening Brief (ADR 0047),
     # which the setup page's switch and `parent-recap update on|off` save (update.set_enabled).
     updates: bool | None = None
+    # Whether the evening run sends the maintainers' gateway its Run Report (ADR 0048), which the
+    # setup page's switch and the manage skill save. Once saved, it holds whichever way the Brief
+    # is sent (Config.sends_run_report).
+    run_report: bool | None = None
     sources: SourcesAnswer | None = None
     progress: ProgressAnswer | None = None
     hosted: bool | None = None      # only the hosted sign-up's `signup household` says so (#669)
@@ -336,6 +341,8 @@ def _merge(data: dict[str, Any], a: Answers) -> None:
         _section(data, "schedule").update(daily_hour=int(hour), daily_minute=int(minute))
     if a.updates is not None:
         _section(data, "updates")["enabled"] = a.updates
+    if a.run_report is not None:
+        _section(data, "run_report")["enabled"] = a.run_report
     sources = a.sources or SourcesAnswer()
     if sources.gmail is not None:
         gmail = _given(sources.gmail)

@@ -699,6 +699,19 @@
           <div id="finish-sending-confirm" class="confirm" hidden></div>
         </div>
       </div>
+      <!-- The Run Report (ADR 0048): the switch, on unless the Brief goes from the Household's own
+           Gmail, where the page asks until the family says; never for a Hosted Household. Right
+           under the sending switch, so turning own-Gmail sending on shows the question by it. -->
+      <div id="finish-report" hidden>
+        <h3 data-text="finish.report.title"></h3>
+        <p><span data-text="finish.report.about"></span> <a id="finish-report-more" target="_blank" rel="noopener noreferrer" data-text="finish.report.more"></a></p>
+        <p id="finish-report-ask" data-text="finish.report.ask" hidden></p>
+        <fieldset>
+          <label><input type="checkbox" id="finish-report-on"><span data-text="finish.report.on"></span></label>
+        </fieldset>
+        <p id="finish-report-saved" role="status" hidden></p>
+        <p id="finish-report-closed" class="hint" data-text="finish.report.closed" hidden></p>
+      </div>
       <!-- The program's own update (ADR 0047): the installed version always; the sentence, the
            switch and Update now only where the program updates itself, so not on Windows or for
            a Hosted Household. -->

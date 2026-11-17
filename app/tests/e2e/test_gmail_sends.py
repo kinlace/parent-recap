@@ -31,6 +31,10 @@ RECIPIENTS = [PARENT, "partner@example.com"]
 REVOKED = "the App Password Google no longer takes"
 BOTH_STOPPED = "neither read that Gmail nor send the Brief from it"
 REAL_HEALTH_CHECKS = ops.health_checks  # before the setup page's tests fake it
+# The Run Report's switch in the page's reply (setup_server/run_report.py): on through the gateway,
+# and off and asked from the Household's own Gmail until the family says.
+REPORTING = {"available": True, "on": True, "ask": False}
+ASKED = {"available": True, "on": False, "ask": True}
 
 
 @pytest.fixture
@@ -263,7 +267,9 @@ def test_finish_turns_sending_from_gmail_on_and_back_off(harness, page):
     harness.secrets[f"gmail-imap-{PARENT}"] = APP_PASSWORD
 
     assert call(page.url, "api/state").json()["sending"] == {"address": PARENT, "gmail": False}
-    assert sending(page.url, "gmail") == {"result": "saved", "sending": "gmail"}
+    # With the Run Report's switch as it now is: off, and asked (ADR 0048, #927).
+    assert sending(page.url, "gmail") == {"result": "saved", "sending": "gmail",
+                                          "run_report": ASKED}
 
     assert saved_config(harness)["email"]["from_gmail"] is True
     assert call(page.url, "api/state").json()["sending"] == {"address": PARENT, "gmail": True}
@@ -287,7 +293,7 @@ def test_finish_does_not_offer_it_with_the_gateway_as_the_ai_or_without_gmail(ha
 
     out = sending(page.url, "gmail")
 
-    assert out == {"result": "not-offered", "sending": "gateway"}
+    assert out == {"result": "not-offered", "sending": "gateway", "run_report": REPORTING}
     assert "from_gmail" not in saved_config(harness)["email"]
 
 
@@ -298,7 +304,8 @@ def test_finish_keeps_the_gateway_when_gmail_refuses_the_app_password(harness, p
 
     out = sending(page.url, "gmail")
 
-    assert out == {"result": "rejected", "sending": "gateway"}  # nothing that names the address
+    # Nothing that names the address.
+    assert out == {"result": "rejected", "sending": "gateway", "run_report": REPORTING}
     assert "from_gmail" not in saved_config(harness)["email"]
 
 
