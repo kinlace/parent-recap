@@ -22,6 +22,7 @@ import time_machine
 
 from conftest import NOW
 from fake_system import WINDOWS_WITHOUT_SSH_KEYGEN
+from family_brief import last_run as run_report_fields
 from family_brief import schedule_update, update, versions
 from family_brief.system import jobs
 from nights import normal_night
@@ -647,6 +648,10 @@ def test_no_request_of_the_evening_update_goes_to_the_maintainers_gateway(evenin
 def update_reported(h) -> str:
     """How the last update went, as the Run Report the last run wrote says it."""
     return json.loads(h.state_path.with_name("last-run.json").read_text())["update"]
+
+
+def test_the_update_keeps_only_the_keys_the_run_report_lists():
+    assert {"none", *update._REPORTED.values()} == set(run_report_fields.UPDATES)
 
 
 def test_the_run_report_says_none_until_an_update_tried_a_release_then_that_it_updated(

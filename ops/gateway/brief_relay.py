@@ -1523,8 +1523,8 @@ def print_reports(keys: Bifrost, state: Path, now: datetime, which: str | None =
     """`admin reports [KEY-OR-ID]`: the Households' Run Reports (ADR 0048, #924), for the
     maintainers. Without `which`, each Household that reported in the last REPORT_DAYS days, one
     line each: its last run's time, version, system, exit, the Brief's outcome, any Source or AI
-    failure by key and how the last update went unless that is none, marked ⚠️ and listed first when its last report came over REPORT_STALE ago,
-    else ❌ when that run failed, else ✅. With `which`, a Gateway Key's name or id or a report's
+    failure by key and how the last update went unless that is none, marked ⚠️ and listed first
+    when its last report came over REPORT_STALE ago, else ❌ when that run failed, else ✅. With `which`, a Gateway Key's name or id or a report's
     id, that Household's runs, one line each, oldest first.
 
     It prints only a report's fixed words and numbers (report_ok) and a key's name, never a key's
