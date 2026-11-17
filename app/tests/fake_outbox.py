@@ -138,7 +138,8 @@ class FakeOutbox:
     when that is set, as a revoked one is refused. `gmail_logins` counts its sign-ins.
 
     The gateway takes each Run Report (ADR 0048) into `reports`, with the headers it came with,
-    and answers `report_answer`: a status, or an exception it raises."""
+    and answers `report_answer`: a status, or an exception it raises; a key in `revoked_keys`
+    gets 401."""
 
     def __init__(self, home: Path, mp: pytest.MonkeyPatch) -> None:
         self.sent: list[SentEmail] = []
@@ -158,6 +159,7 @@ class FakeOutbox:
         self.gmail_logins = 0
         self.reports: list[Report] = []
         self.report_answer: int | Exception = 200
+        self.revoked_keys: set[str] = set()
         mp.setattr(smtplib, "SMTP_SSL", lambda host, port, timeout=None: _Smtp(self, (host, port)))
         mp.setattr(api, "post_brief", self._relay)
         mp.setattr(api, "post_report", self._take_report)
@@ -194,6 +196,8 @@ class FakeOutbox:
                      timeout: float = 0) -> requests.Response:
         if isinstance(self.report_answer, Exception):
             raise self.report_answer
+        if headers.get("x-api-key") in self.revoked_keys:
+            return _response(401, {"error": "unknown or revoked key"})
         if self.report_answer == 200:
             self.reports.append(Report(dict(headers), raw))
             return _response(200, {"taken": True})

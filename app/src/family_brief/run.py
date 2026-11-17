@@ -888,20 +888,25 @@ def run_unless_caught_up(cfg: Config, options: Options, io: IO,
         ended = _run(cfg, options, io, caught_up, report)
     except BaseException as e:
         report.ended_on(e)
-        if last_run.record(cfg, 1, time.monotonic() - started, wilma_egress.causes(), report):
-            run_report.queue(cfg)
-            if isinstance(e, Exception):  # one stopped by hand waits for the next run
-                run_report.send(cfg)
+        # A run stopped by hand doesn't wait on the gateway: its report goes with the next run's.
+        _report(cfg, 1, time.monotonic() - started, report, send=isinstance(e, Exception))
         raise
-    if last_run.record(cfg, ended.code, time.monotonic() - started, wilma_egress.causes(), report):
-        run_report.queue(cfg)
-        run_report.send(cfg)
+    _report(cfg, ended.code, time.monotonic() - started, report)
     if then is not None and _updates_after(cfg, options, by_hand, caught_up, ended):
         try:
             then()
         except Exception:  # noqa: BLE001 - the Brief is out; the next evening tries again
             log.exception("The update after the evening run stopped; the run's result stands")
     return ended.code
+
+
+def _report(cfg: Config, code: int, seconds: float, report: last_run.Report, send: bool = True) -> None:
+    """Writes the run's Run Report, and queues and, with `send`, sends it to the gateway when the
+    Household sends it (run_report.py). Never fails the run."""
+    if last_run.record(cfg, code, seconds, wilma_egress.causes(), report):
+        run_report.queue(cfg)
+        if send:
+            run_report.send(cfg)
 
 
 def _how_started(options: Options, by_hand: bool, caught_up: bool) -> str:
