@@ -73,6 +73,9 @@ class Check(NamedTuple):
 def register(sub) -> None:
     pd = sub.add_parser("doctor", help="Check all configured connections (no message content shown)")
     pd.add_argument("--skip-llm", action="store_true", help="Don't make a test call to Claude / Codex")
+    pd.add_argument("--offer-problem-report", action="store_true",
+                    help="Parent Recap Check's: after the checks, show a Problem Report and ask "
+                         "whether to send it to the Parent Recap team; only a yes sends it")
     pd.set_defaults(func=cmd_doctor)
 
     pdis = sub.add_parser("discover", help="List candidates to put in config during onboarding")
@@ -105,12 +108,46 @@ def register(sub) -> None:
 # ---------------------------------------------------------------- doctor
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    results = health_checks(args.config, skip_llm=args.skip_llm, show=True)
-    fails = sum(1 for c in results if c.status == FAIL)
-    warns = sum(1 for c in results if c.status == WARN)
-    print(f"\n{len(results)} checks: {len(results) - fails - warns} OK, {warns} warnings, "
-          f"{fails} to fix")
+    offer = getattr(args, "offer_problem_report", False)
+    shown = _Shown(sys.stdout) if offer else None
+    try:
+        if shown is not None:
+            sys.stdout = shown
+        results = health_checks(args.config, skip_llm=args.skip_llm, show=True)
+        fails = sum(1 for c in results if c.status == FAIL)
+        warns = sum(1 for c in results if c.status == WARN)
+        print(f"\n{len(results)} checks: {len(results) - fails - warns} OK, {warns} warnings, "
+              f"{fails} to fix", flush=True)
+    finally:
+        if shown is not None:
+            sys.stdout = shown.out
+    if shown is not None:
+        # Only Parent Recap Check asks for this: doctor run any other way asks nothing (#925).
+        from . import problem_report
+        problem_report.offer(args.config, shown.text())
     return 1 if fails else 0
+
+
+class _Shown:
+    """Writes what doctor prints to `out`, as it is, and keeps it for the Problem Report, which
+    holds doctor's results as the window showed them."""
+
+    def __init__(self, out) -> None:
+        self.out = out
+        self.parts: list[str] = []
+
+    def write(self, text: str) -> int:
+        self.parts.append(text)
+        return self.out.write(text)
+
+    def flush(self) -> None:
+        self.out.flush()
+
+    def text(self) -> str:
+        return "".join(self.parts)
+
+    def __getattr__(self, name: str):
+        return getattr(self.out, name)
 
 
 def health_checks(config: str | None, skip_llm: bool = False, show: bool = False,

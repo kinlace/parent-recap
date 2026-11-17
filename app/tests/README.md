@@ -83,10 +83,12 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_admin.py`                 | The gateway's `admin` command: each task, root only, key off/on, a Household found, nightly + sign-up mails  |
 | `test_admin_autodeploy.py`      | `admin autodeploy`: a new `stable` deployed and mailed, switched back, waiting, paused, refused for days     |
 | `test_admin_reports.py`         | `admin reports`: each Household's last Run Report, the silent ones first, one Household's runs, no key or address |
+| `test_admin_problems.py`        | `admin problems`: the Problem Reports without their words, one shown whole with nothing a terminal acts on (#925) |
 | `test_admin_deploy.py`          | `admin deploy`: what is refused, the evening window, each deploy kept, recorded, checked                     |
 | `test_admin_rollback.py`        | Each deploy's snapshot and its pruning, `admin deploys`, which deploy `rollback` picks, `--restore`          |
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
 | `test_report_relay.py`          | The gateway taking a Run Report: by key or id, the per-caller limit, only the program's fields, 30 days      |
+| `test_problem_relay.py`         | The gateway taking a Problem Report: by key or id, the size and count limits, its shape, never logged, 30 days (#925) |
 | `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
 | `test_versions.py`              | The install's switch to a new version, the previous one kept, `switch-back` (ADR 0047); on Windows with the Linked Device stopped and under the run lock (#991) |
@@ -121,6 +123,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_nightly_continuity.py`      | Nights in a row, quiet nights, catching up a missed evening within 10 hours             |
 | `test_run_report.py`             | The Run Report each run leaves (ADR 0048), however it ended, and doctor's line for it   |
 | `test_run_report_sent.py`        | The Run Report sent to the gateway after each run, with its key or an id; one not taken goes with the next run's; doctor's line (#923) |
+| `test_problem_report.py`         | The Problem Report Parent Recap Check offers (#925): shown whole, only a yes sends, in the family's language, only the program's own log lines, with a key or an id, never from doctor run otherwise |
 | `test_setup_run_report.py`       | The setup page's switch for it (#927): on through the gateway, asked when own-Gmail sending is turned on, kept once set, none for a Hosted Household; its words, and manage's row |
 | `test_nightly_google_calendar.py` | Google Calendar mode                                                                    |
 | `test_nightly_languages.py`       | Recipients in their own languages                                                       |

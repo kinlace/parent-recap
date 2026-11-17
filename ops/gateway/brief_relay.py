@@ -26,7 +26,9 @@ nightly check (`admin check --mail`, #745) sends through `Mailer` too, so its ma
 
 It also takes a Household's Run Report (POST /v1/report, ADR 0048, #922): only the fields and fixed
 keys the program names, under its Gateway Key or a random id, kept REPORT_DAYS days (`Reports`).
-`admin reports` (#924) lists them (`print_reports`).
+`admin reports` (#924) lists them (`print_reports`). And a Problem Report a parent chose to send
+from Parent Recap Check (POST /v1/problem, #925), kept as long (`Problems`); `admin problems`
+lists them and shows one (`print_problems`).
 
 Python's standard library only, so it runs on the host's own python3 with nothing to install.
 """
@@ -830,24 +832,137 @@ class Reports:
 
     def prune(self) -> list[str]:
         """Deletes each day's reports REPORT_DAYS days old or older; the days deleted."""
-        last = date.fromisoformat(self.today()) - timedelta(days=REPORT_DAYS)
-        gone = []
+        with self.lock:
+            return _delete_old_days(self.root, self.today())
+
+
+def _delete_old_days(root: Path, today: str) -> list[str]:
+    """Deletes each day's folder under `root` REPORT_DAYS days old or older; the days deleted."""
+    last = date.fromisoformat(today) - timedelta(days=REPORT_DAYS)
+    gone = []
+    try:
+        days = list(root.iterdir())
+    except FileNotFoundError:
+        return []
+    for d in days:
+        try:
+            old = date.fromisoformat(d.name) <= last
+        except ValueError:
+            continue  # not a day's folder: not the relay's to delete
+        if old and d.is_dir():
+            for f in d.iterdir():
+                f.unlink()
+            d.rmdir()
+            gone.append(d.name)
+    return gone
+
+
+# ── The Problem Report (ADR 0048, #925)
+
+# A Problem Report is what a parent chose to send from Parent Recap Check: doctor's output, the
+# version and system, the last lines of the program's own logs and one line they wrote. Unlike a
+# Run Report it can hold free text, which the parent read before saying yes, so the relay checks
+# its shape and size, not its words, and never logs them. Kept REPORT_DAYS days, as Run Reports.
+MAX_PROBLEM_BYTES = 65_536
+# Per UTC day: Problem Reports under one Gateway Key; without a key from one caller (by IP
+# address); and those without a key from everyone. A parent sends one, perhaps again after a fix.
+PROBLEMS_PER_KEY = 5
+PROBLEMS_PER_CALLER = 5
+PROBLEMS_PER_DAY = 100
+# The logs a Problem Report may hold lines of, as the program names them (problem_report.LOGS).
+PROBLEM_LOGS = ("run", "update", "install")
+MAX_NOTE = 300
+PROBLEM_ID = re.compile(r"p-[0-9a-f]{8}", re.ASCII)
+
+
+def _p_text(value: object) -> bool:
+    return isinstance(value, str)
+
+
+def _p_note(value: object) -> bool:
+    return isinstance(value, str) and len(value) <= MAX_NOTE and "\n" not in value and "\r" not in value
+
+
+def _p_logs(value: object) -> bool:
+    return isinstance(value, dict) and all(
+        name in PROBLEM_LOGS and isinstance(lines, list) and all(isinstance(x, str) for x in lines)
+        for name, lines in value.items())
+
+
+PROBLEM_FIELDS: dict[str, Callable[[object], bool]] = {
+    "version": _r_matches(_R_VERSION),
+    "system": _r_one_of(REPORT_SYSTEMS),
+    "system_version": _r_matches(_R_SYSTEM_VERSION),
+    "doctor": _p_text,
+    "logs": _p_logs,
+    "note": _p_note,
+}
+
+
+def problem_ok(problem: object) -> bool:
+    """Whether `problem` is an object of PROBLEM_FIELDS' fields alone, each of the shape it
+    allows, with at least the version, the system and doctor's output."""
+    return (isinstance(problem, dict) and {"version", "system", "doctor"} <= set(problem)
+            and all(k in PROBLEM_FIELDS and PROBLEM_FIELDS[k](v) for k, v in problem.items()))
+
+
+class Problems:
+    """The Problem Reports taken, kept REPORT_DAYS days, with the day's counts that limit them.
+    Each is a file `<root>/<UTC day>/<its id>.json`, with when it came and what it is kept under
+    (`key-<the key's Bifrost id>` or `id-<its report id>`); a day's folder is deleted once it is
+    REPORT_DAYS days old. The counts are in `counts`: per key by its Bifrost id, per caller only as
+    a truncated SHA-256 of its IP address."""
+
+    def __init__(self, root: Path, counts: Path,
+                 today: Callable[[], str] = lambda: datetime.now(UTC).date().isoformat(),
+                 now: Callable[[], str] = lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                 new_id: Callable[[], str] = lambda: f"p-{secrets.token_hex(4)}") -> None:
+        self.root, self.counts, self.today, self.now, self.new_id = root, counts, today, now, new_id
+        self.lock = threading.Lock()
+
+    def take(self, key: Key | None, caller: str) -> bool:
+        """Counts a Problem Report under `key`, or without one from `caller`, or returns False
+        when that is over a day's limit."""
         with self.lock:
             try:
-                days = list(self.root.iterdir())
-            except FileNotFoundError:
-                return []
-            for d in days:
-                try:
-                    old = date.fromisoformat(d.name) <= last
-                except ValueError:
-                    continue  # not a day's folder: not the relay's to delete
-                if old and d.is_dir():
-                    for f in d.iterdir():
-                        f.unlink()
-                    d.rmdir()
-                    gone.append(d.name)
-        return gone
+                state = json.loads(self.counts.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                state = {}
+            if not isinstance(state, dict) or state.get("day") != self.today():
+                state = {"day": self.today(), "keys": {}, "callers": {}, "taken": 0}
+            if key is not None:
+                if state["keys"].get(key.id, 0) >= PROBLEMS_PER_KEY:
+                    return False
+                state["keys"][key.id] = state["keys"].get(key.id, 0) + 1
+            else:
+                h = _hashed(caller)
+                if state["callers"].get(h, 0) >= PROBLEMS_PER_CALLER or state["taken"] >= PROBLEMS_PER_DAY:
+                    return False
+                state["callers"][h] = state["callers"].get(h, 0) + 1
+                state["taken"] += 1
+            tmp = self.counts.with_suffix(".tmp")
+            tmp.write_text(json.dumps(state), encoding="utf-8")
+            tmp.replace(self.counts)
+            return True
+
+    def keep(self, who: str, problem: dict) -> str:
+        """Keeps `problem` under `who`, today, deletes what is past its days, and returns its id."""
+        with self.lock:
+            day = self.root / self.today()
+            day.mkdir(parents=True, exist_ok=True)
+            pid = next(i for i in iter(self.new_id, None) if not (day / f"{i}.json").exists())
+            entry = {"id": pid, "received": self.now(), "from": who, "problem": problem}
+            (day / f"{pid}.json").write_text(json.dumps(entry, ensure_ascii=False), encoding="utf-8")
+        try:
+            self.prune()
+        except OSError as e:
+            log.warning("problem reports not pruned (%s)", e.__class__.__name__)
+        return pid
+
+    def prune(self) -> list[str]:
+        """Deletes each day's Problem Reports REPORT_DAYS days old or older; the days deleted."""
+        with self.lock:
+            return _delete_old_days(self.root, self.today())
 
 
 def _who(prefix: str, value: str) -> str:
@@ -862,10 +977,52 @@ def _who(prefix: str, value: str) -> str:
 class Relay:
     def __init__(self, keys: Bifrost, cap: DailyCap, mailer: Mailer, stop_url: str,
                  bindings: Bindings, confirm_url: str, last_sent: LastSent | None = None,
-                 reports: Reports | None = None) -> None:
+                 reports: Reports | None = None, problems: Problems | None = None) -> None:
         self.keys, self.cap, self.mailer, self.stop_url = keys, cap, mailer, stop_url
         self.bindings, self.confirm_url, self.last_sent = bindings, confirm_url, last_sent
-        self.reports = reports
+        self.reports, self.problems = reports, problems
+
+    def problem(self, key_value: str | None, report_id: str | None, caller: str,
+                raw: bytes) -> tuple[int, dict]:
+        """POST /v1/problem: keeps a Problem Report a parent chose to send (#925), under its
+        Gateway Key (`x-api-key`), or, without one, as an install that failed has none, under the
+        report id its program made (`x-report-id`), limited per key or per caller. One over
+        MAX_PROBLEM_BYTES, or not of PROBLEM_FIELDS' shape, is refused. Its words are never
+        logged: only who sent it, its size and the outcome."""
+        who = "-"
+        key = None
+        pid = None
+        try:
+            try:
+                if self.problems is None:
+                    raise Refused(404, "not found")
+                if key_value:
+                    key = self._key(key_value)
+                    who, kept_as = f"key={key.name}", _who("key", key.id)
+                elif report_id and REPORT_ID.fullmatch(report_id):
+                    who, kept_as = f"id={report_id}", _who("id", report_id)
+                else:
+                    raise Refused(401, "a Gateway Key or a report id is needed")
+                if len(raw) > MAX_PROBLEM_BYTES:
+                    raise Refused(413, f"the Problem Report is over {MAX_PROBLEM_BYTES} bytes")
+                try:
+                    problem = json.loads(raw)
+                except (ValueError, RecursionError):
+                    raise Refused(400, "the Problem Report isn't JSON") from None
+                if not problem_ok(problem):
+                    raise Refused(400, "the Problem Report has a field the gateway doesn't take")
+                if not self.problems.take(key, caller):
+                    raise Refused(429, "too many Problem Reports today; try again tomorrow")
+                pid = self.problems.keep(kept_as, problem)
+            except Refused:
+                raise
+            except Exception as e:
+                raise Refused(500, f"the relay failed ({e.__class__.__name__})") from None
+        except Refused as e:
+            log.info("problem %s bytes=%d outcome=%s %s", who, len(raw), e.status, e.reason)
+            return e.status, {"error": e.reason}
+        log.info("problem %s bytes=%d outcome=taken as=%s", who, len(raw), pid)
+        return 200, {"taken": True}
 
     def report(self, key_value: str | None, report_id: str | None, caller: str,
                raw: bytes) -> tuple[int, dict]:
@@ -1146,6 +1303,9 @@ def handler(relay: Relay) -> type[BaseHTTPRequestHandler]:
                           lambda raw: relay.rebind(self.headers.get("x-api-key"), raw),
                       "/v1/report": lambda raw: relay.report(
                           self.headers.get("x-api-key"), self.headers.get("x-report-id"),
+                          self._caller(), raw),
+                      "/v1/problem": lambda raw: relay.problem(
+                          self.headers.get("x-api-key"), self.headers.get("x-report-id"),
                           self._caller(), raw)}
             if self.path not in routes:
                 return self._answer(404, {"error": "not found"})
@@ -1171,16 +1331,17 @@ class JournalFormatter(logging.Formatter):
         return f"<4>{line}" if record.levelno >= logging.WARNING else line
 
 
-def _prune_hourly(reports: Reports, every: float = 3600) -> None:
-    """Deletes the Run Reports past their days now and each hour after, so they go on time on a
-    day no report comes."""
-    try:
-        gone = reports.prune()
-        if gone:
-            log.info("reports deleted days=%s", ",".join(gone))
-    except OSError as e:
-        log.warning("reports not pruned (%s)", e.__class__.__name__)
-    timer = threading.Timer(every, _prune_hourly, (reports, every))
+def _prune_hourly(reports: Reports, problems: Problems, every: float = 3600) -> None:
+    """Deletes the Run Reports and Problem Reports past their days now and each hour after, so
+    they go on time on a day none comes."""
+    for what, kept in (("reports", reports), ("problem reports", problems)):
+        try:
+            gone = kept.prune()
+            if gone:
+                log.info("%s deleted days=%s", what, ",".join(gone))
+        except OSError as e:
+            log.warning("%s not pruned (%s)", what, e.__class__.__name__)
+    timer = threading.Timer(every, _prune_hourly, (reports, problems, every))
     timer.daemon = True
     timer.start()
 
@@ -1200,6 +1361,7 @@ def main() -> None:
               file=sys.stderr)
         sys.exit(EX_CONFIG)
     reports = Reports(state / "reports", state / "report-counts.json")
+    problems = Problems(state / "problems", state / "problem-counts.json")
     relay = Relay(
         keys=admin,
         cap=DailyCap(state / "sent.json", limit=DAILY_CAP, on_request_limit=ON_REQUEST_DAILY_CAP),
@@ -1210,8 +1372,8 @@ def main() -> None:
         bindings=Bindings(state / "bindings.json"),
         confirm_url=f"https://{env['GATEWAY_HOST']}/brief/confirm",
         last_sent=LastSent(state / LAST_SENT),
-        reports=reports)
-    _prune_hourly(reports)
+        reports=reports, problems=problems)
+    _prune_hourly(reports, problems)
     port = int(env.get("BRIEF_RELAY_PORT", "8081"))
     server = ThreadingHTTPServer(("127.0.0.1", port), handler(relay))
     log.info("brief-relay listening on 127.0.0.1:%d", port)
@@ -1576,6 +1738,99 @@ def print_reports(keys: Bifrost, state: Path, now: datetime, which: str | None =
                  *(["read " + ", ".join(read)] if read else [])]
         run, outcome = _report_text(r)
         print("  ".join([local(_ran_at(k)), *run, *extra, *outcome]))
+
+
+@dataclass
+class KeptProblem:
+    """A Problem Report as the relay kept it."""
+    id: str
+    received: datetime
+    who: str
+    problem: dict
+
+
+def kept_problems(root: Path) -> list[KeptProblem]:
+    """Every Problem Report kept under `root` (`Problems`), the oldest first. A file that isn't one
+    the relay kept is skipped."""
+    kept = []
+    try:
+        days = sorted(root.iterdir())
+    except FileNotFoundError:
+        return []
+    for d in days:
+        try:
+            date.fromisoformat(d.name)
+        except ValueError:
+            continue
+        if not d.is_dir():
+            continue
+        for f in d.glob("p-*.json"):
+            try:
+                entry = json.loads(f.read_text(encoding="utf-8", errors="replace"))
+                received = datetime.fromisoformat(entry["received"])
+                pid, who, problem = entry["id"], entry["from"], entry["problem"]
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError):
+                continue
+            if (received.tzinfo is not None and isinstance(pid, str) and PROBLEM_ID.fullmatch(pid)
+                    and isinstance(who, str) and problem_ok(problem)):
+                kept.append(KeptProblem(pid, received, who, problem))
+    return sorted(kept, key=lambda p: (p.received, p.id))
+
+
+def _printable(text: str) -> str:
+    """`text` with anything a terminal would act on, such as an escape sequence, as a space."""
+    return "".join(c if c.isprintable() else " " for c in text)
+
+
+def print_problems(keys: Bifrost, state: Path, which: str | None = None) -> None:
+    """`admin problems [ID]`: the Problem Reports parents sent from Parent Recap Check (#925), for
+    the maintainers. Without `which`, each one kept, one line each, the oldest first: its id, when
+    it came, whom from (as `admin reports` names a Household), the version and system, how many of
+    doctor's checks failed, and whether the parent wrote a line; none of its words. With `which`,
+    an id, that one whole: the parent's line, doctor's output and the log lines. Those are free
+    text a parent read and chose to send, which can hold addresses and names: read it on the
+    server, never paste it."""
+    zone = ZoneInfo(REPORT_ZONE)
+    kept = kept_problems(state / "problems")
+    names = _report_names(keys, {p.who: [] for p in kept})
+
+    def local(when: datetime) -> str:
+        return when.astimezone(zone).strftime("%Y-%m-%d %H:%M")
+
+    def about(p: KeptProblem) -> str:
+        r = p.problem
+        system = " ".join(str(r[k]) for k in ("system", "system_version") if k in r)
+        return f"{local(p.received)}  {names[p.who]}  {r['version']}  {system}"
+
+    if which is None:
+        if not kept:
+            print(f"No Problem Report kept: none was sent in the last {REPORT_DAYS} days.")
+            return
+        print(f"The Problem Reports of the last {REPORT_DAYS} days (times in {REPORT_ZONE}); "
+              "sudo admin problems ID shows one, to read on the server only:")
+        for p in kept:
+            failed = sum(1 for line in p.problem["doctor"].splitlines() if line.startswith("❌"))
+            note = "a line from the parent" if p.problem.get("note") else "no line from the parent"
+            print(f"{p.id}  {about(p)}  {failed} check{'' if failed == 1 else 's'} failed  {note}")
+        return
+    found = [p for p in kept if p.id == which]
+    if not found:
+        sys.exit(f"no Problem Report {which} kept in the last {REPORT_DAYS} days (sudo admin "
+                 "problems lists them)")
+    p = found[0]
+    print(f"Problem Report {p.id}: {about(p)} (time in {REPORT_ZONE})")
+    print("Free text a parent chose to send: read it here, never paste it.")
+    print(f"\nWhat went wrong, in their words: {_one_line(p.problem.get('note')) or '(nothing)'}")
+    print("\ndoctor:")
+    for line in p.problem["doctor"].splitlines():
+        print(f"  {_printable(line)}")
+    for name in PROBLEM_LOGS:
+        lines = (p.problem.get("logs") or {}).get(name)
+        if lines is None:
+            continue
+        print(f"\nThe last lines of the {name} log:" if lines else f"\nThe {name} log: no lines")
+        for line in lines:
+            print(f"  {_printable(line)}")
 
 
 

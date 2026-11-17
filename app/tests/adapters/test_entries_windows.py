@@ -40,7 +40,9 @@ def test_check_runs_doctor_in_a_powershell_window_that_stays_open(monkeypatch):
     assert made["arguments"].startswith("-NoExit ")
     # The venv's Python, by a path whose curly quote PowerShell would take for the string's end.
     python = str(TARGET / "app" / ".venv" / "Scripts" / "python.exe").replace("’", "’’")
-    assert made["arguments"].endswith(f"-Command \"& '{python}' -m family_brief doctor\"")
+    # doctor offers the Problem Report in that window: only Check asks it to (#925).
+    assert made["arguments"].endswith(
+        f"-Command \"& '{python}' -m family_brief doctor --offer-problem-report\"")
 
 
 def test_they_go_in_a_parent_recap_folder_of_the_user_s_start_menu(monkeypatch, tmp_path):

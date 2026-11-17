@@ -39,7 +39,7 @@ What a Household's computer sends the maintainers after each evening run: how th
 _Avoid_: telemetry, log upload, diagnostics, 日志
 
 **Problem Report** (zh 问题报告, fi vikailmoitus):
-What a parent sends the maintainers from Parent Recap Check when something is wrong: the check's results and the last lines of the program's logs, shown to them first and sent only when they press Send (ADR 0048).
+What a parent sends the maintainers from Parent Recap Check when something is wrong: the check's results, the version and system, the last lines the program itself wrote in its logs and one line of their own, shown to them first and sent only when they answer yes to the one question the window asks (ADR 0048, #925).
 _Avoid_: bug report, feedback, log upload
 
 ## Inputs

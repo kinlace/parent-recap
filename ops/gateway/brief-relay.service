@@ -21,7 +21,8 @@ RestartSec=5
 # addresses bound to them and the day's request counts (bindings.json), and the day's count of all
 # mail sent (quota.json), and the date each key last sent a Brief (last-sent.json), and the Run
 # Reports of the last 30 days (reports/) with the day's counts that limit them
-# (report-counts.json); no message is ever written.
+# (report-counts.json), and the Problem Reports parents chose to send in the last 30 days
+# (problems/) with theirs (problem-counts.json); no message is ever written.
 StateDirectory=brief-relay
 StateDirectoryMode=0700
 NoNewPrivileges=true

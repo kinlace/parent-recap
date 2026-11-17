@@ -57,14 +57,14 @@ def scripts(name: str, target: Path) -> dict[str, str]:
         f"Contents/MacOS/{EXECUTABLES[name]}": (
             f"#!/bin/sh\n{MADE_BY}\n"
             f'exec /usr/bin/open -a Terminal "$(dirname "$0")/../Resources/{CHECK_SCRIPT}"\n'),
-        # Waits for Return, so the window stays open for a screenshot whatever Terminal's own
-        # setting for a shell that ended.
+        # doctor then offers the Problem Report, asked in this window (#925). Waits for Return,
+        # so the window stays open for a screenshot whatever Terminal's own setting for a shell
+        # that ended.
         f"Contents/Resources/{CHECK_SCRIPT}": (
             f"#!/bin/sh\n{MADE_BY}\n"
-            f"{_command(target)} doctor\n"
+            f"{_command(target)} doctor --offer-problem-report\n"
             "echo\n"
-            "echo 'Take a screenshot of this window if the Parent Recap team asked for one.'\n"
-            "echo 'Press Return to close it.'\n"
+            "echo 'Press Return to close this window.'\n"
             "read -r _\n"),
     }
 
