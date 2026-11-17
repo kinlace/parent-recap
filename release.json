@@ -1,13 +1,13 @@
 {
-  "version": "0.20.0",
+  "version": "0.21.0",
   "background_from": null,
   "asks": null,
   "parts": {
-    "core": "0.20.0",
+    "core": "0.21.0",
     "fi/eepos": "0.20.0",
     "fi/evaka": "0.20.0",
     "fi/myclub": "0.20.0",
-    "nl/konnect": "0.20.0",
+    "nl/konnect": "0.20.1",
     "nl/socialschools": "0.20.0"
   }
 }
