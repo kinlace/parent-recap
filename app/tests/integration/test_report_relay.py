@@ -237,8 +237,8 @@ def test_the_gateways_list_is_the_programs():
 def _values() -> list[object]:
     """Values of every shape a field may take, good and bad, for both lists to judge."""
     keys = [*last_run.CAUSES, *last_run.STARTED, *last_run.SYSTEMS, *last_run.AI_RESULTS,
-            *last_run.BACKENDS, *last_run.UPDATES, "installed", "sent", "nothing-to-tell", "failed", "read", "outcome", "cause",
-            "backend", "result", "type", "at", "message", "nightly", "teams",
+            *last_run.BACKENDS, *last_run.UPDATES, "installed", "sent", "nothing-to-tell",
+            "failed", "read", "outcome", "cause", "backend", "result", "type", "at", "message", "nightly", "teams",
             *(s.name for s in ALL), *FREE_TEXT]
     scalars: list[object] = [*keys, 0, -1, 42, True, None, 1.5, "0.12.0", "0.12.0+dev.3", "15.1",
                              "10.0.26100", "6.8.0-45-generic", "2026-11-14T19:00:00+00:00",
