@@ -25,7 +25,8 @@ from fake_system import WINDOWS_WITHOUT_SSH_KEYGEN
 from family_brief import schedule_update, update, versions
 from family_brief.system import jobs
 from nights import normal_night
-from test_update import ASKS, INSTALLED, github, mac, needing_family, update_log  # noqa: F401  the fixtures
+from test_update import (ASKS, INSTALLED, github, mac, needing_family, release_zip,  # noqa: F401  the fixtures
+                         signature, update_log)
 
 # The Mac's wake dialog and install.sh's layout.
 pytestmark = pytest.mark.macos
@@ -639,3 +640,74 @@ def test_no_request_of_the_evening_update_goes_to_the_maintainers_gateway(evenin
     assert (outbox.relay_keys, outbox.key_requests, outbox.binds) == ([], [], [])
     assert evening.model_calls == []
     assert os.environ.get(schedule_update.UPDATING) is None  # set only for the installer
+
+
+# ---------------------------------------------------------------- the Run Report (#933)
+
+def update_reported(h) -> str:
+    """How the last update went, as the Run Report the last run wrote says it."""
+    return json.loads(h.state_path.with_name("last-run.json").read_text())["update"]
+
+
+def test_the_run_report_says_none_until_an_update_tried_a_release_then_that_it_updated(
+        evening, github, mac):  # noqa: F811
+    release_out(github, "0.20.0")
+    assert evening.run() == 0
+    assert update_reported(evening) == "none"
+    with at(NOW + DAY):  # written before tonight's update, which installs 0.20.0
+        assert evening.run() == 0
+    assert update_reported(evening) == "none" and mac.version() == "0.20.0"
+
+    with at(NOW + 2 * DAY):
+        assert evening.run() == 0
+    assert update_reported(evening) == "updated"
+
+
+@pytest.mark.parametrize("failure, reported", [("check", "switched-back"),
+                                               ("signature", "failed")])
+def test_the_run_report_says_an_update_switched_back_or_failed(
+        evening, github, mac, failure, reported):  # noqa: F811
+    release_out(github, "0.20.0")
+    if failure == "check":
+        mac.fails["0.20.0"] = ["Calendar"]
+    else:
+        data = release_zip("0.20.0")
+        github.publish("0.20.0", data, signature(data, key="someone-else"))
+    assert evening.run() == 0
+    with at(NOW + DAY):
+        assert evening.run() == 0
+    assert mac.version() == INSTALLED
+
+    # The evenings after don't try that version again, and the report still says how it went.
+    for day in (2, 3):
+        with at(NOW + day * DAY):
+            assert evening.run() == 0
+        assert update_reported(evening) == reported
+
+
+def test_the_run_report_says_a_release_waits_for_the_family_until_they_start_it(
+        evening, github, mac):  # noqa: F811
+    needs_family_out(github, "0.20.0")
+    for day in (0, 1, 2):
+        with at(NOW + day * DAY):
+            assert evening.run() == 0
+    assert update_reported(evening) == "waiting-for-family"
+
+    with at(NOW + 2 * DAY + timedelta(hours=1)):
+        assert evening.cli("update") == 0
+    with at(NOW + 3 * DAY):
+        assert evening.run() == 0
+    assert update_reported(evening) == "updated"
+
+
+def test_a_household_the_update_does_not_apply_to_reports_none(evening, github, mac):  # noqa: F811
+    release_out(github, "0.20.0")
+    assert evening.run() == 0
+    with at(NOW + DAY):
+        assert evening.run() == 0
+    assert mac.version() == "0.20.0"
+
+    evening.config["hosted"] = True
+    with at(NOW + 2 * DAY):
+        assert evening.run() == 0
+    assert update_reported(evening) == "none"

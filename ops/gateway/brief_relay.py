@@ -702,6 +702,7 @@ REPORT_STARTED = ("schedule", "catch-up", "by-hand")
 REPORT_SYSTEMS = ("macos", "windows", "linux")
 REPORT_AI_RESULTS = ("ok", "busy", "timed-out", "failed")
 REPORT_BACKENDS = ("claude", "codex", "gateway")
+REPORT_UPDATES = ("none", "updated", "failed", "switched-back", "waiting-for-family")
 REPORT_SOURCES = ("gmail", "myclub", "wilma", "whatsapp", "eepos", "evaka", "socialschools",
                   "konnect", "local_files")
 _R_VERSION = re.compile(r"[0-9]+(\.[0-9]+)*([.+-][0-9A-Za-z.]+)?|unknown")
@@ -763,6 +764,7 @@ REPORT_FIELDS: dict[str, Callable[[object], bool]] = {
     "ai": _r_object({"backend": _r_one_of(REPORT_BACKENDS), "result": _r_one_of(REPORT_AI_RESULTS)}),
     "brief": lambda v: any(ok(v) for ok in _R_BRIEF),
     "exception": _r_object({"type": _r_matches(_R_TYPE)}, {"at": _r_matches(_R_WHERE)}),
+    "update": _r_one_of(REPORT_UPDATES),
 }
 
 
@@ -1503,6 +1505,8 @@ def _report_text(r: dict) -> tuple[list[str], list[str]]:
         outcome.append("failed: " + ", ".join(failed))
     if exc:
         outcome.append(f"exception {exc['type']}" + (f" at {exc['at']}" if "at" in exc else ""))
+    if r.get("update", "none") != "none":  # how the program's last update went (ADR 0047)
+        outcome.append(f"update {r['update']}")
     return [r.get("version", "?"), system or "?", f"exit {r['exit']}"], outcome
 
 
@@ -1518,8 +1522,8 @@ def _ago(delta: timedelta) -> str:
 def print_reports(keys: Bifrost, state: Path, now: datetime, which: str | None = None) -> None:
     """`admin reports [KEY-OR-ID]`: the Households' Run Reports (ADR 0048, #924), for the
     maintainers. Without `which`, each Household that reported in the last REPORT_DAYS days, one
-    line each: its last run's time, version, system, exit, the Brief's outcome and any Source or AI
-    failure by key, marked ⚠️ and listed first when its last report came over REPORT_STALE ago,
+    line each: its last run's time, version, system, exit, the Brief's outcome, any Source or AI
+    failure by key and how the last update went unless that is none, marked ⚠️ and listed first when its last report came over REPORT_STALE ago,
     else ❌ when that run failed, else ✅. With `which`, a Gateway Key's name or id or a report's
     id, that Household's runs, one line each, oldest first.
 

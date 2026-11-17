@@ -36,7 +36,7 @@ REPORT = {
     "peak_mb": 180, "causes": ["wilma-egress"],
     "sources": {"gmail": {"read": 3}, "wilma": {"failed": "wilma-egress"}},
     "ai": {"backend": "gateway", "result": "ok"},
-    "brief": {"outcome": "sent"},
+    "brief": {"outcome": "sent"}, "update": "updated",
 }
 SECRET = "Mia Virtanen"
 
@@ -185,6 +185,11 @@ FREE_TEXT = ["teacher.3b@kilo.example.fi", SECRET, "/Users/anna/ParentRecap/stat
     *({"exception": {"type": t}} for t in FREE_TEXT),
     *({"exception": {"type": "OSError", "at": t}} for t in FREE_TEXT),
     {"exception": {"type": "OSError", "message": SECRET}},
+    {"update": "installed"},
+    {"update": ["updated"]},
+    {"update": {"result": "updated"}},
+    {"update": None},
+    *({"update": t} for t in FREE_TEXT),
 ])
 def test_a_report_with_anything_outside_the_list_is_refused_and_nothing_of_it_is_kept_or_logged(
         tmp_path, day, caplog, change):
@@ -221,6 +226,7 @@ def test_the_gateways_list_is_the_programs():
     assert br.REPORT_SYSTEMS == last_run.SYSTEMS
     assert br.REPORT_AI_RESULTS == last_run.AI_RESULTS
     assert br.REPORT_BACKENDS == tuple(last_run.BACKENDS)
+    assert br.REPORT_UPDATES == last_run.UPDATES
     assert set(br.REPORT_SOURCES) == {s.name for s in ALL}
     for ours, theirs in [(br._R_VERSION, last_run._VERSION),
                          (br._R_SYSTEM_VERSION, last_run._SYSTEM_VERSION),
@@ -231,7 +237,7 @@ def test_the_gateways_list_is_the_programs():
 def _values() -> list[object]:
     """Values of every shape a field may take, good and bad, for both lists to judge."""
     keys = [*last_run.CAUSES, *last_run.STARTED, *last_run.SYSTEMS, *last_run.AI_RESULTS,
-            *last_run.BACKENDS, "sent", "nothing-to-tell", "failed", "read", "outcome", "cause",
+            *last_run.BACKENDS, *last_run.UPDATES, "installed", "sent", "nothing-to-tell", "failed", "read", "outcome", "cause",
             "backend", "result", "type", "at", "message", "nightly", "teams",
             *(s.name for s in ALL), *FREE_TEXT]
     scalars: list[object] = [*keys, 0, -1, 42, True, None, 1.5, "0.12.0", "0.12.0+dev.3", "15.1",
@@ -267,7 +273,8 @@ def test_a_report_the_program_writes_is_taken(tmp_path, day):
         report.ended_on(e)
     written = last_run.only_listed({"at": "2026-11-14T19:00:00+00:00", "exit": 1, "seconds": 12,
                                     "peak_mb": 90, "causes": ["wilma-egress"],
-                                    **last_run._about(), **report.fields()})
+                                    **last_run._about(), "update": "switched-back",
+                                    **report.fields()})
     assert br.report_ok(written)
     assert post(make_relay(tmp_path, day), written)[0] == 200
 
