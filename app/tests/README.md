@@ -121,7 +121,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_nightly_continuity.py`      | Nights in a row, quiet nights, catching up a missed evening within 10 hours             |
 | `test_run_report.py`             | The Run Report each run leaves (ADR 0048), however it ended, and doctor's line for it   |
 | `test_run_report_sent.py`        | The Run Report sent to the gateway after each run, with its key or an id; one not taken goes with the next run's; doctor's line (#923) |
-| `test_setup_run_report.py`       | The setup page's Run Report switch (#927): on through the gateway, asked when own-Gmail sending is turned on, kept once set, none for a Hosted Household; its words, and manage's row |
+| `test_setup_run_report.py`       | The setup page's switch for it (#927): on through the gateway, asked when own-Gmail sending is turned on, kept once set, none for a Hosted Household; its words, and manage's row |
 | `test_nightly_google_calendar.py` | Google Calendar mode                                                                    |
 | `test_nightly_languages.py`       | Recipients in their own languages                                                       |
 | `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                                     |
