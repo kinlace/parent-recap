@@ -179,6 +179,45 @@ def test_what_the_program_sends_is_taken(tmp_path, day):
     assert problem_report.MAX_NOTE == br.MAX_NOTE
 
 
+ABOUT = {"version": "0.21.0", "system": "macos", "system_version": "15.1"}
+# A log line full of characters UTF-8 writes in four bytes, and a parent's line of them too.
+WIDE = "21:00:04 ERROR family_brief | " + "😀" * 260
+WIDE_NOTE = "😀" * problem_report.MAX_NOTE
+
+
+def test_the_program_drops_the_oldest_log_lines_of_a_report_too_big(tmp_path, day):
+    report = problem_report.Report(ABOUT, "❌ Last run: failed\n", {
+        name: [f"{WIDE}{n}" for n in range(problem_report.LINES)] for name in problem_report.LOGS})
+
+    body = report.fitted().body(WIDE_NOTE)
+
+    assert len(body) <= problem_report.MAX_BYTES == br.MAX_PROBLEM_BYTES
+    assert post(make_relay(tmp_path, day), body)[0] == 200
+    sent = json.loads(body)
+    assert sent["doctor"] == "❌ Last run: failed\n" and sent["note"] == WIDE_NOTE
+    for lines in sent["logs"].values():
+        assert 0 < len(lines) < problem_report.LINES
+        assert lines[-1].endswith(f"{problem_report.LINES - 1}")  # the newest kept
+
+
+def test_the_program_cuts_the_end_of_doctors_output_when_that_is_too_big_alone(tmp_path, day):
+    report = problem_report.Report(ABOUT, "❌ 失败\n" * 20_000, {"run": [WIDE]})
+
+    body = report.fitted().body(WIDE_NOTE)
+
+    assert len(body) <= problem_report.MAX_BYTES
+    assert post(make_relay(tmp_path, day), body)[0] == 200
+    sent = json.loads(body)
+    assert sent["doctor"].startswith("❌ 失败\n") and sent["doctor"].endswith("\n…")
+    assert sent["logs"] == {"run": []}
+
+
+def test_a_report_that_fits_is_left_whole():
+    report = problem_report.Report(ABOUT, "✅ Config file\n", {"run": ["21:00:04 INFO family_brief | x"]})
+    assert report.fitted() == report
+
+
+
 def test_over_http_it_is_posted_with_its_key_or_its_id(tmp_path, day):
     server = br.ThreadingHTTPServer(("127.0.0.1", 0), br.handler(make_relay(tmp_path, day)))
     threading.Thread(target=server.serve_forever, daemon=True).start()

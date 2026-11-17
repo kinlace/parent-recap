@@ -166,15 +166,11 @@ def _system_version(system: str) -> str:
     return (platform.version() if system == "windows" else platform.release()) or UNKNOWN
 
 
-def _about() -> dict[str, str]:
-    system = profile.current().system
-    return {"version": _version(), "system": system, "system_version": _system_version(system)}
-
-
 def about() -> dict[str, str]:
     """The program's version, the system and the system's version, as a Run Report gives them; a
     Problem Report (problem_report.py) gives them too."""
-    return _about()
+    system = profile.current().system
+    return {"version": _version(), "system": system, "system_version": _system_version(system)}
 
 
 def _update(cfg: Config) -> dict[str, str]:
@@ -202,7 +198,7 @@ def record(cfg: Config, exit: int, seconds: float, causes: list[str] | tuple[str
         if causes:
             noted["causes"] = list(causes)
         try:  # what signup status reads is written even when the rest can't be
-            noted = only_listed({**noted, **_about(), **_update(cfg),
+            noted = only_listed({**noted, **about(), **_update(cfg),
                                  **(report.fields() if report else {})})
         except Exception as e:  # noqa: BLE001
             log.warning("The Run Report holds only how the run ended: %s", type(e).__name__)

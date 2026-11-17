@@ -273,7 +273,7 @@ def test_a_report_the_program_writes_is_taken(tmp_path, day):
         report.ended_on(e)
     written = last_run.only_listed({"at": "2026-11-14T19:00:00+00:00", "exit": 1, "seconds": 12,
                                     "peak_mb": 90, "causes": ["wilma-egress"],
-                                    **last_run._about(), "update": "switched-back",
+                                    **last_run.about(), "update": "switched-back",
                                     **report.fields()})
     assert br.report_ok(written)
     assert post(make_relay(tmp_path, day), written)[0] == 200
