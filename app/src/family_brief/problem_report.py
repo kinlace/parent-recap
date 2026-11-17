@@ -38,6 +38,13 @@ MAX_LINE = 300      # characters of a line; the rest is cut
 MAX_NOTE = 300      # characters of the parent's line, as the gateway allows
 TAIL_BYTES = 256 * 1024  # of a log's end read: a log is never read whole
 TIMEOUT = 30
+# The most the gateway takes of one report (MAX_PROBLEM_BYTES in ops/gateway/brief_relay.py), and
+# what the parent's line can add to it as JSON: each character at most a 4-byte UTF-8 one, or an
+# escaped quote or backslash, with the field's name.
+MAX_BYTES = 65_536
+NOTE_ROOM = MAX_NOTE * 4 + 32
+CUT = "\n…"  # ends doctor's output when it had to be cut
+TOO_MANY = 429  # the gateway's answer to a key or caller past the day's count
 
 # A line the program itself wrote, with its time first: the evening run's logging
 # (`21:00:01 INFO family_brief.run | …`, the setup preview's with its date before), or the
@@ -151,12 +158,34 @@ class Report:
             data["note"] = note
         return json.dumps(data, ensure_ascii=False).encode("utf-8")
 
+    def fitted(self) -> "Report":
+        """This report cut to what the gateway takes (MAX_BYTES) with any line the parent may
+        add: the oldest log lines go first, then the end of doctor's output. Made before the
+        window shows it, so what is shown is what is sent."""
+        logs = {name: list(lines) for name, lines in self.logs.items()}
+        doctor = self.doctor
+        room = MAX_BYTES - NOTE_ROOM
+        while len(Report(self.about, doctor, logs).body()) > room:
+            longest = max(logs.values(), key=len, default=[])
+            if longest:
+                longest.pop(0)
+                continue
+            over = len(Report(self.about, doctor, logs).body()) - room
+            kept = doctor.encode("utf-8")[:max(0, len(doctor.encode("utf-8")) - over - len(CUT) * 2)]
+            doctor = kept.decode("utf-8", errors="ignore") + CUT
+        return Report(self.about, doctor, logs)
+
 
 def own_lines(text: str, limit: int = LINES) -> list[str]:
     """The last `limit` lines of `text` the program itself wrote (OWN_LINE), each cut to
     MAX_LINE characters, with any character a terminal would act on as a space."""
     kept = [line for line in text.splitlines() if OWN_LINE.match(line)]
-    return ["".join(c if c.isprintable() else " " for c in line[:MAX_LINE]) for line in kept[-limit:]]
+    return [_printable(line[:MAX_LINE]) for line in kept[-limit:]]
+
+
+def _printable(text: str) -> str:
+    """`text` with anything a terminal would act on, such as an escape sequence, as a space."""
+    return "".join(c if c.isprintable() else " " for c in text)
 
 
 def _tail(path: Path) -> str:
@@ -189,10 +218,10 @@ def gather(cfg: Config | None, doctor: str) -> Report:
     last lines of each log the program wrote itself."""
     logs = {name: own_lines(_tail(path)) if path is not None else []
             for name, path in log_files(cfg).items()}
-    return Report(last_run.about(), doctor, logs)
+    return Report(last_run.about(), doctor, logs).fitted()
 
 
-def shown(report: Report, language: str) -> str:
+def report_text(report: Report, language: str) -> str:
     """What the window shows of the report after doctor's output, which it has shown already."""
     w = words(language)
     about = report.about
@@ -225,7 +254,7 @@ def note_of(answer: str | None) -> str:
     """The parent's line as it goes: one line, without control characters, at most MAX_NOTE."""
     if not answer:
         return ""
-    return " ".join("".join(c if c.isprintable() else " " for c in answer).split())[:MAX_NOTE]
+    return " ".join(_printable(answer).split())[:MAX_NOTE]
 
 
 def _who(cfg: Config | None) -> dict[str, str]:
@@ -260,9 +289,9 @@ def send(cfg: Config | None, body: bytes, language: str) -> str:
                 url, {run_report.REPORT_ID_HEADER: _report_id(cfg)}, body, TIMEOUT).status_code
     except (TimeoutError, gateway.GatewayError):
         return w.not_sent.format(why=w.offline)
-    if status == 200:
+    if status == run_report.TAKEN:
         return w.sent
-    why = w.too_many if status == 429 else w.refused.format(status=status)
+    why = w.too_many if status == TOO_MANY else w.refused.format(status=status)
     return w.not_sent.format(why=why)
 
 
@@ -282,7 +311,7 @@ def offer(config: str | None, doctor: str, ask: Callable[[str], str] = input,
     except Exception as e:  # noqa: BLE001 - a report that can't be made is just not offered
         say(f"\nThe Problem Report couldn't be made ({type(e).__name__}).")
         return
-    say("\n" + shown(report, language) + "\n")
+    say("\n" + report_text(report, language) + "\n")
     if not is_yes(_answer(ask, w.question), language):
         say(w.nothing_sent)
         return

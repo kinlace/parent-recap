@@ -112,7 +112,7 @@ class _Cfg:
 def test_what_signup_status_reads_is_written_even_when_the_rest_cant_be(tmp_path, monkeypatch):
     def broken() -> dict[str, str]:
         raise ValueError("no system")
-    monkeypatch.setattr(last_run, "_about", broken)
+    monkeypatch.setattr(last_run, "about", broken)
     cfg = _Cfg(tmp_path / "state.json")
 
     last_run.record(cfg, 1, 12.4, ["wilma-egress"], last_run.Report("schedule"))  # type: ignore[arg-type]

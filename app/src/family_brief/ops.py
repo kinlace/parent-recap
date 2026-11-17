@@ -108,23 +108,29 @@ def register(sub) -> None:
 # ---------------------------------------------------------------- doctor
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    offer = getattr(args, "offer_problem_report", False)
-    shown = _Shown(sys.stdout) if offer else None
+    if not args.offer_problem_report:
+        return _doctor(args)
+    # Only Parent Recap Check asks for this: doctor run any other way asks nothing (#925).
+    from . import problem_report
+    shown = _Shown(sys.stdout)
+    sys.stdout = shown
     try:
-        if shown is not None:
-            sys.stdout = shown
-        results = health_checks(args.config, skip_llm=args.skip_llm, show=True)
-        fails = sum(1 for c in results if c.status == FAIL)
-        warns = sum(1 for c in results if c.status == WARN)
-        print(f"\n{len(results)} checks: {len(results) - fails - warns} OK, {warns} warnings, "
-              f"{fails} to fix", flush=True)
+        return _doctor(args)
+    except Exception:  # noqa: BLE001 - a check that crashed is what the report is for
+        log.exception("doctor stopped before its last check")
+        print("\ndoctor stopped before its last check.", flush=True)
+        return 1
     finally:
-        if shown is not None:
-            sys.stdout = shown.out
-    if shown is not None:
-        # Only Parent Recap Check asks for this: doctor run any other way asks nothing (#925).
-        from . import problem_report
+        sys.stdout = shown.out
         problem_report.offer(args.config, shown.text())
+
+
+def _doctor(args: argparse.Namespace) -> int:
+    results = health_checks(args.config, skip_llm=args.skip_llm, show=True)
+    fails = sum(1 for c in results if c.status == FAIL)
+    warns = sum(1 for c in results if c.status == WARN)
+    print(f"\n{len(results)} checks: {len(results) - fails - warns} OK, {warns} warnings, "
+          f"{fails} to fix", flush=True)
     return 1 if fails else 0
 
 

@@ -124,6 +124,23 @@ def test_it_asks_in_the_familys_language(broken, capsys, monkeypatch, language, 
     assert len(broken.problems) == 1
 
 
+def test_a_check_that_crashes_still_offers_the_report(broken, capsys, monkeypatch):
+    from family_brief import ops
+
+    def crashes(*_a, **_k):
+        print("✅ Config file: fine", flush=True)
+        raise RuntimeError("a check's own bug")
+
+    monkeypatch.setattr(ops, "health_checks", crashes)
+
+    shown = check(broken, capsys, monkeypatch, "yes\n\n")
+
+    [problem] = broken.problems
+    assert problem.json()["doctor"].startswith("✅ Config file: fine\n")
+    assert "doctor stopped before its last check" in problem.json()["doctor"]
+    assert "✅ Sent." in shown
+
+
 def test_doctor_run_any_other_way_asks_nothing_and_sends_nothing(broken, capsys, monkeypatch):
     monkeypatch.setattr("sys.stdin", io.StringIO("yes\nsomething\n"))
 
