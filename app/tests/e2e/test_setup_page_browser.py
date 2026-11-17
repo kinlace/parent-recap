@@ -2039,6 +2039,51 @@ def test_finish_sends_the_brief_from_the_familys_gmail_and_back(tab, family, hea
     assert not Config.load(config_file(family)).email.from_gmail
 
 
+# ── Finish: the Run Report (ADR 0048, #927)
+
+
+def report_switch(tab):
+    return tab.get_by_role("checkbox", name=text("finish.report.on"), exact=True)
+
+
+def test_finish_says_what_the_run_report_is_and_its_switch_turns_it_off(tab, family, health):
+    at_finish(family)
+    tab.reload()
+
+    expect(tab.get_by_text(text("finish.report.about"))).to_be_visible()
+    link = tab.get_by_role("link", name=text("finish.report.more"), exact=True)
+    expect(link).to_have_attribute("href", re.compile(r"/SECURITY\.md#the-run-report$"))
+    expect(report_switch(tab)).to_be_checked()
+    expect(tab.get_by_text(text("finish.report.ask"))).to_be_hidden()
+
+    report_switch(tab).uncheck()
+
+    expect(tab.get_by_text(text("finish.report.saved.off"))).to_be_visible()
+    assert Config.load(config_file(family)).sends_run_report() is False
+    tab.reload()  # saved: a page opened later shows it off
+    expect(report_switch(tab)).not_to_be_checked()
+
+
+def test_a_household_that_turns_own_gmail_sending_on_is_asked_and_says_yes(tab, family, health):
+    at_finish(family)
+    family.secrets["gmail-imap-parent@example.com"] = "abcdefghijklmnop"
+    tab.reload()
+    expect(report_switch(tab)).to_be_checked()
+
+    button(tab, "finish.sending.on").click()
+
+    expect(tab.get_by_text(text("finish.report.ask"))).to_be_visible()
+    expect(report_switch(tab)).not_to_be_checked()
+    assert Config.load(config_file(family)).sends_run_report() is False
+
+    report_switch(tab).check()
+
+    expect(tab.get_by_text(text("finish.report.saved.on"))).to_be_visible()
+    expect(tab.get_by_text(text("finish.report.ask"))).to_be_hidden()
+    config = Config.load(config_file(family))
+    assert config.sends_from_gmail() and config.sends_run_report()
+
+
 def test_a_household_that_said_only_me_adds_and_removes_a_recipient_at_finish(tab, family,
                                                                              health):
     # #699: under "Later", in the rows of Gmail's step; a new address gets its link (ADR 0033).

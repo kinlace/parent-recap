@@ -29,6 +29,7 @@ from test_setup_first_brief import at_the_first_brief, brief_made, make_brief, s
 
 OTHER_WAKE = "wake every weekday at 07:00"
 UPDATES_SWITCH = '<input type="checkbox" id="finish-updates-on">'  # test_setup_updates.py
+RUN_REPORT_SWITCH = '<input type="checkbox" id="finish-report-on">'  # test_setup_run_report.py
 
 
 def checklist(out: dict[str, Any]) -> dict[str, bool]:
@@ -174,8 +175,10 @@ def test_finish_takes_no_password(page):
         assert r.status == 400 and r.json()["result"] == "invalid-answers", body
     html_text = (PAGE_DIR / "index.html").read_text()
     finish_section = html_text.split('<section id="finish"', 1)[1].split("</section>", 1)[0]
-    # Only the choice of AI, whose sign-ins are Connect's own, and the updates' switch.
-    assert all('type="radio" name="finish-ai"' in field or field == UPDATES_SWITCH
+    # Only the choice of AI, whose sign-ins are Connect's own, the updates' switch and the Run
+    # Report's.
+    assert all('type="radio" name="finish-ai"' in field
+               or field in (UPDATES_SWITCH, RUN_REPORT_SWITCH)
                for field in re.findall(r"<input[^>]*>", finish_section))
 
 

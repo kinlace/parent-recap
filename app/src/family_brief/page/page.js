@@ -7,7 +7,7 @@ const page = {
   about: null,
   progress: null, welcome: null, connect: null, gmail: null, myclub: null, wilma: null,
   eepos: null, evaka: null,
-  sending: null, updates: null,
+  sending: null, runReport: null, updates: null,
   check: null, brief: null, welcomeShown: false, connectShown: false, workingShown: false,
   checkShown: false, briefShown: false, finishShown: false, finished: false,
 };
@@ -3249,6 +3249,8 @@ function enterFinish() {
   document.getElementById("finish-ai-open").addEventListener("click", openFinishAI);
   document.getElementById("finish-ai-form").addEventListener("submit", signInFinishAI);
   document.getElementById("finish-sending-switch").addEventListener("click", switchSending);
+  document.getElementById("finish-report-on").addEventListener("change", switchRunReport);
+  showRunReport();
   document.getElementById("finish-updates-on").addEventListener("change", switchUpdates);
   document.getElementById("finish-updates-now").addEventListener("click", updateNow);
   showUpdates();
@@ -3402,6 +3404,11 @@ async function switchSending() {
   try {
     const out = await post("api/finish/sending", { to: sendsFromGmail() ? "gateway" : "gmail" });
     page.sending.gmail = out.sending === "gmail";
+    // Turning own-Gmail sending on turns a Run Report the family never set off, and asks.
+    if (out.run_report) {
+      page.runReport = out.run_report;
+      showRunReport();
+    }
     const saved = out.result === "saved";
     const message = document.getElementById("finish-sending-message");
     setText(message, saved ? "finish.sending.saved." + out.sending : "finish.sending." + out.result);
@@ -3418,6 +3425,45 @@ async function switchSending() {
     failed(e);
   } finally {
     button.disabled = false;
+  }
+}
+
+// ── Finish: the Run Report (ADR 0048). Where the Household sends one at all, so not for a
+// Hosted Household, the page shows its switch with a sentence on what it is and a link to what it
+// holds. For a Household that sends its Brief from its own Gmail and hasn't said yet, the switch
+// is off and the page asks; once the family set it, it stays as set. The link opens SECURITY.md's
+// section on it in a new tab, on the branch families install from (ADR 0002); the page itself
+// loads nothing from there.
+
+const RUN_REPORT_DOC = "https://github.com/kinlace/parent-recap/blob/stable/SECURITY.md#the-run-report";
+
+function showRunReport() {
+  const report = page.runReport;
+  document.getElementById("finish-report").hidden = !report?.available;
+  if (!report?.available) return;
+  document.getElementById("finish-report-more").href = RUN_REPORT_DOC;
+  document.getElementById("finish-report-on").checked = report.on;
+  document.getElementById("finish-report-ask").hidden = !report.ask;
+}
+
+async function switchRunReport() {
+  clearError();
+  const box = document.getElementById("finish-report-on");
+  box.disabled = true;
+  try {
+    const out = await post("api/run-report", { on: box.checked });
+    page.runReport = out.run_report;
+    const saved = document.getElementById("finish-report-saved");
+    setText(saved, out.result === "saved"
+      ? "finish.report.saved." + (out.run_report.on ? "on" : "off") : "finish.report.save-failed");
+    saved.classList.toggle("fail", out.result !== "saved");
+    saved.hidden = false;
+    showRunReport();
+  } catch (e) {
+    box.checked = page.runReport.on;
+    failed(e);
+  } finally {
+    box.disabled = false;
   }
 }
 
@@ -3760,6 +3806,9 @@ function closed() {
     "finish-recipients-open", "finish-recipients-form", "finish-back"]) {
     document.getElementById(id).hidden = true;
   }
+  // The Run Report's switch needs the server too.
+  document.getElementById("finish-report-on").disabled = true;
+  document.getElementById("finish-report-closed").hidden = false;
   // The updates' switch and Update now need the server: the page says where to change them.
   clearTimeout(updateStep.timer);
   document.getElementById("finish-updates-on").disabled = true;
@@ -3874,6 +3923,7 @@ async function start() {
   page.whatsapp = state.whatsapp;
   page.wilma = state.wilma;
   page.sending = state.sending;
+  page.runReport = state.run_report;
   page.updates = state.updates;
   page.check = state.check;
   page.brief = state.brief;
