@@ -245,6 +245,15 @@ class UpdatesConfig(BaseModel):
     enabled: bool = True
 
 
+class RunReportConfig(BaseModel):
+    """Whether the family's computer sends the maintainers' gateway its Run Report after each
+    evening run (ADR 0048, run_report.py). Left unset, it follows how the Brief is sent: on for a
+    Household that sends it through the gateway, off for one that sends it from its own Gmail
+    (ADR 0034). Once set, it stays as set whichever way the Brief is sent
+    (Config.sends_run_report)."""
+    enabled: bool | None = None
+
+
 # Sections an older version wrote that this one no longer reads: a config with them still loads,
 # since Config ignores keys it doesn't know, and is still Parent Recap's (uninstall.py). Pilot
 # feedback's was removed in #939.
@@ -277,6 +286,7 @@ class Config(BaseModel):
     weekend_events: WeekendEventsConfig = WeekendEventsConfig()
     schedule: ScheduleConfig = ScheduleConfig()
     updates: UpdatesConfig = UpdatesConfig()
+    run_report: RunReportConfig = RunReportConfig()
     state_path: str = "~/.family/state.json"
 
     def resolved_state_path(self) -> Path:
@@ -350,6 +360,16 @@ class Config(BaseModel):
         instead of the gateway: turned on, and still offered. With the gateway as the AI it goes
         through the gateway again, whatever `email.from_gmail` says."""
         return self.email.from_gmail and self.may_send_from_gmail()
+
+    def sends_run_report(self) -> bool:
+        """Whether the evening run sends its Run Report to the gateway (ADR 0048): as
+        `run_report.enabled` says, or, when it says nothing, unless the Brief goes from the
+        Household's own Gmail. A Hosted Household sends none: its status is read on the server."""
+        if self.hosted:
+            return False
+        if self.run_report.enabled is not None:
+            return self.run_report.enabled
+        return not self.sends_from_gmail()
 
     def other_sources(self) -> list[str]:
         """The Sources connected besides Gmail, of those this system can read."""

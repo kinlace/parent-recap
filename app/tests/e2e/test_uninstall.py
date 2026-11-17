@@ -145,6 +145,11 @@ def set_up(harness, monkeypatch, *, record: bool = True) -> None:
     assert harness.wake.wakes == [our_wake(harness)]
     harness.wake.asked.clear()
     harness.state_path.write_text("{}")
+    # The last run's Run Report, one waiting to go to the gateway and the id it goes under (ADR 0048).
+    (home / ".family" / "last-run.json").write_text('{"at": "2026-09-26T18:00:00+00:00", "exit": 0}')
+    (home / ".family" / "run-reports").mkdir()
+    (home / ".family" / "run-reports" / "20260926T180000000000Z-000.json").write_text("{}")
+    (home / ".family" / "run-reports" / "id").write_text("0" * 32)
     (home / ".family" / "languages").mkdir()
     (home / ".family" / "languages" / "sv.json").write_text("{}")
     (home / ".family" / "config.yaml.bak-202609011200").write_text("old: config\n")
@@ -192,7 +197,7 @@ def test_lists_everything_setup_created_and_removes_nothing(harness, monkeypatch
                  "ParentRecap/app", "ParentRecap/logs", "ParentRecap/runtime", "ParentRecap/bin",
                  "on the PATH: the PATH", ".family/config.yaml",
                  ".family/config.yaml.bak-202609011200", ".family/state.json", ".family/languages",
-                 ".family/install-record.json", ".family/setup-progress.json",
+                 ".family/last-run.json", ".family/run-reports", ".family/install-record.json", ".family/setup-progress.json",
                  ".family/programs.json", ".family/whatsapp-python.json", "gmail-imap-parent@example.com",
                  "claude-oauth-token", ".agents/skills/parent-recap-setup",
                  ".agents/skills/parent-recap-manage"):
@@ -1287,7 +1292,7 @@ def test_the_setup_internals_document_names_everything_uninstall_removes(harness
     items = out.split("\n\nLeft as it is:")[0].split("\n\nNothing has been removed yet")[0]
     listed = [line.split(": ", 1)[1].split(" (", 1)[0] for line in items.splitlines()
               if line.startswith("  • ")]
-    assert len(listed) == 27
+    assert len(listed) == 29
     for where in listed:
         name = where.rsplit("/", 1)[-1].strip().replace("parent@example.com", "<address>")
         name = name.replace("202609011200", "<date>").replace("1 day in ~", "~")

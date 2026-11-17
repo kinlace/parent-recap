@@ -93,10 +93,13 @@ def post(url: str, gateway_key: str, system: str, prompt: str, timeout: float,
                  {"x-api-key": gateway_key, "anthropic-version": ANTHROPIC_VERSION})
 
 
-def _post(url: str, path: str, body: dict[str, Any], timeout: float,
+def _post(url: str, path: str, body: dict[str, Any] | bytes, timeout: float,
           headers: dict[str, str]) -> requests.Response:
+    """POSTs `body` as JSON, or, given bytes, those bytes as they are."""
+    sent: dict[str, Any] = ({"data": body, "headers": {"content-type": "application/json", **headers}}
+                            if isinstance(body, bytes) else {"json": body, "headers": headers})
     try:
-        return requests.post(f"{url.rstrip('/')}{path}", json=body, timeout=timeout, headers=headers)
+        return requests.post(f"{url.rstrip('/')}{path}", timeout=timeout, **sent)
     except requests.Timeout:
         raise TimeoutError(f"the gateway at {host(url)} didn't answer within {timeout:g}s") from None
     except requests.RequestException as e:
@@ -183,6 +186,13 @@ def post_brief(url: str, gateway_key: str, body: dict[str, Any],
                timeout: float = SEND_TIMEOUT) -> requests.Response:
     """One request to the gateway's Brief relay at `url`, failing as `post` does."""
     return _post(url, "/v1/brief", body, timeout, {"x-api-key": gateway_key})
+
+
+def post_report(url: str, headers: dict[str, str], raw: bytes, timeout: float) -> requests.Response:
+    """One Run Report to the gateway at `url` (ADR 0048), `raw` being the file's bytes as the run
+    wrote them, with the Gateway Key (`x-api-key`) or the report id (`x-report-id`) in `headers`.
+    Fails as `post` does."""
+    return _post(url, "/v1/report", raw, timeout, headers)
 
 
 # How a send refused because no Recipient confirmed starts (ADR 0033).

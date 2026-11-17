@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 from zoneinfo import ZoneInfo
 
-from . import ai_filter, gateway, languages, last_run, llm, private_files, render, slept, wilma_egress
+from . import (ai_filter, gateway, languages, last_run, llm, private_files, render, run_report, slept,
+               wilma_egress)
 from . import sources as source_registry
 from .actions import archive, calendar as calendar_action, email as email_action, imessage
 from .brief import Brief, EarlierBrief, RunNotes
@@ -861,7 +862,8 @@ def run_unless_caught_up(cfg: Config, options: Options, io: IO,
     run since, such as Windows' late start of a missed task after its sign-in task caught the
     evening up, does nothing. Checked under the run lock, so a catch-up started beside the evening
     run sees the state that run left. A run that isn't a dry run leaves its Run Report in
-    last-run.json (ADR 0048), a crash as exit 1 with the exception's type and line."""
+    last-run.json (ADR 0048), a crash as exit 1 with the exception's type and line, and sends it
+    to the gateway when the Household does (run_report.py), after the Brief."""
     caught_up = False
     by_hand = options.scheduled and _started_by_hand(cfg)
     if options.if_missed or (options.scheduled and not by_hand and not cfg.hosted):
@@ -886,9 +888,14 @@ def run_unless_caught_up(cfg: Config, options: Options, io: IO,
         ended = _run(cfg, options, io, caught_up, report)
     except BaseException as e:
         report.ended_on(e)
-        last_run.record(cfg, 1, time.monotonic() - started, wilma_egress.causes(), report)
+        if last_run.record(cfg, 1, time.monotonic() - started, wilma_egress.causes(), report):
+            run_report.queue(cfg)
+            if isinstance(e, Exception):  # one stopped by hand waits for the next run
+                run_report.send(cfg)
         raise
-    last_run.record(cfg, ended.code, time.monotonic() - started, wilma_egress.causes(), report)
+    if last_run.record(cfg, ended.code, time.monotonic() - started, wilma_egress.causes(), report):
+        run_report.queue(cfg)
+        run_report.send(cfg)
     if then is not None and _updates_after(cfg, options, by_hand, caught_up, ended):
         try:
             then()
