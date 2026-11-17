@@ -167,10 +167,10 @@ def _about() -> dict[str, str]:
 
 
 def record(cfg: Config, exit: int, seconds: float, causes: list[str] | tuple[str, ...] = (),
-           report: Report | None = None) -> None:
+           report: Report | None = None) -> bool:
     """Notes that a run ended now with `exit` after `seconds`, the peak memory it and its child
     processes used, the `causes` it named, and what `report` says. Only fields FIELDS lists, with
-    values it allows, are written. Never fails the run it notes."""
+    values it allows, are written. Whether it was written; never fails the run it notes."""
     try:
         noted: dict[str, object] = {"at": datetime.now(timezone.utc).isoformat(), "exit": exit,
                                     "seconds": round(seconds)}
@@ -189,8 +189,10 @@ def record(cfg: Config, exit: int, seconds: float, causes: list[str] | tuple[str
         tmp = target.with_name(f".{target.name}.tmp")
         tmp.write_text(json.dumps(noted, indent=2), encoding="utf-8")
         tmp.replace(target)
+        return True
     except Exception as e:  # noqa: BLE001 - the run's result stands without its report
         log.warning("Couldn't write the Run Report: %s", type(e).__name__)
+        return False
 
 
 def read(cfg: Config) -> LastRun | None:

@@ -31,9 +31,9 @@ SCHEDULE_CHECKS = frozenset({"schedule", "last-run", "wake", "sign-in-after-upda
 FINISH_CHECKS = {**HEALTH_CHECKS, "schedule": "schedule", "last-run": "last-run",
                  "sign-in-after-update": "sign-in-after-update"}
 # Doctor's check of the Settings and Check entries, which the install made before the page opened,
-# and its line on the program's own update, which Finish shows with its switch: not the health
-# check's to show.
-DOCTOR_ONLY = frozenset({"entries", "updates"})
+# its line on the program's own update, which Finish shows with its switch, and its line on the
+# Run Report (ADR 0048): not the health check's to show.
+DOCTOR_ONLY = frozenset({"entries", "updates", "run-report"})
 FINISH_LEAVES_OUT = frozenset({"wake", *DOCTOR_ONLY})
 HEALTH_STATUSES = {ops.OK: "ok", ops.WARN: "warn", ops.FAIL: "fail"}
 

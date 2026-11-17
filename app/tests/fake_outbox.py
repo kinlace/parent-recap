@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import email
 import email.policy
+import json
 import smtplib
 import subprocess
 from dataclasses import dataclass, field
@@ -32,6 +33,16 @@ class SentEmail:
 
     def attachment(self, suffix: str) -> tuple[str, bytes, str] | None:
         return next((a for a in self.attachments if a[0].endswith(suffix)), None)
+
+
+@dataclass
+class Report:
+    """A Run Report the gateway took: the headers it came with and its bytes."""
+    headers: dict[str, str]
+    raw: bytes
+
+    def json(self) -> dict[str, Any]:
+        return json.loads(self.raw)
 
 
 @dataclass
@@ -124,7 +135,10 @@ class FakeOutbox:
 
     Gmail's SMTP server sends what a Household that sends from its own Gmail hands it (ADR
     0034), into `sent` too, `via` "gmail": it takes any App Password, or only `gmail_password`
-    when that is set, as a revoked one is refused. `gmail_logins` counts its sign-ins."""
+    when that is set, as a revoked one is refused. `gmail_logins` counts its sign-ins.
+
+    The gateway takes each Run Report (ADR 0048) into `reports`, with the headers it came with,
+    and answers `report_answer`: a status, or an exception it raises."""
 
     def __init__(self, home: Path, mp: pytest.MonkeyPatch) -> None:
         self.sent: list[SentEmail] = []
@@ -142,8 +156,11 @@ class FakeOutbox:
         self.key_answer: tuple[int, dict[str, Any]] | Exception | None = None
         self.gmail_password: str | None = None
         self.gmail_logins = 0
+        self.reports: list[Report] = []
+        self.report_answer: int | Exception = 200
         mp.setattr(smtplib, "SMTP_SSL", lambda host, port, timeout=None: _Smtp(self, (host, port)))
         mp.setattr(api, "post_brief", self._relay)
+        mp.setattr(api, "post_report", self._take_report)
         real_post = api._post
         mp.setattr(api, "_post", lambda url, path, body, timeout, headers:
                    self._key_desk(path, body, headers) if path in ("/v1/brief/key", "/v1/brief/recipients")
@@ -172,6 +189,15 @@ class FakeOutbox:
                                        [(a["filename"], base64.b64decode(a["data"]), a["content_type"])
                                         for a in body.get("attachments", [])]))
         return _response(status, answer)
+
+    def _take_report(self, url: str, headers: dict[str, str], raw: bytes,
+                     timeout: float = 0) -> requests.Response:
+        if isinstance(self.report_answer, Exception):
+            raise self.report_answer
+        if self.report_answer == 200:
+            self.reports.append(Report(dict(headers), raw))
+            return _response(200, {"taken": True})
+        return _response(self.report_answer, {"error": "not taken"})
 
     def confirm(self, *addresses: str) -> None:
         """The Recipients press the link in their confirmation email."""

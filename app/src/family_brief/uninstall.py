@@ -26,8 +26,8 @@ from typing import Callable
 import yaml
 from pydantic import ValidationError
 
-from . import (ai_filter_report, chat_install, command_path, install_record,
-               linked_device, llm, ops, own_node, run_lock, setup_save, setup_wilma, sources, tools,
+from . import (ai_filter_report, chat_install, command_path, install_record, last_run,
+               linked_device, llm, ops, own_node, run_lock, run_report, setup_save, setup_wilma, sources, tools,
                update, versions)
 from .collectors.gmail import keychain_account, username_of
 from .config import RETIRED_SECTIONS, Config
@@ -520,6 +520,9 @@ def _config_and_state(s: Survey, config: Path, cfg: Config | None, defaults: Con
     found += [("Config backup", p) for p in sorted(family.glob(config.name + ".bak*"))]
     found += [("Setup's progress", setup_save.progress_path(config)),
               ("State", state), ("Run lock", run_lock.lock_path(defaults)),
+              # How the last run ended, and the copies waiting to go to the gateway (ADR 0048).
+              ("Run Report", last_run.path(defaults)),
+              ("Run Reports waiting to be sent", run_report.outbox(defaults)),
               # `schedule run-now`'s note for the run it starts, which that run takes (#894).
               ("A Brief started by hand", evening.by_hand_path(defaults)),
               ("The program's text in other languages", state.parent / "languages"),

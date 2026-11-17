@@ -19,7 +19,7 @@ from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 from . import (baileys_install, google_packages, languages, last_run, own_node, private_files,
-               secret_dialog, sources, wilma_egress)
+               run_report, secret_dialog, sources, wilma_egress)
 from .config import Config
 from .system import entries, jobs, profile, wake, windows_only
 
@@ -43,7 +43,7 @@ CHECK_ITEMS = (
     ("calendar", "Calendar"), ("weekend", "Weekend Picks"),
     ("schedule", "Schedule"), ("last-run", "Last run"),
     ("wake", "Wake"), ("sign-in-after-update", "Sign-in after updates"),
-    ("entries", "Settings and Check"), ("updates", "Updates"),
+    ("entries", "Settings and Check"), ("updates", "Updates"), ("run-report", "Run Report"),
 )
 _ITEMS = dict(CHECK_ITEMS)
 
@@ -168,6 +168,9 @@ def health_checks(config: str | None, skip_llm: bool = False, show: bool = False
     if entries.offered():
         _check_entries(add)
     _check_updates(config, add)
+    # Whether the evening run sends its Run Report, and when it last did (ADR 0048). Always OK:
+    # off is the family's choice, and a report not sent goes with the next run's.
+    add(OK, "run-report", run_report.status(cfg).line())
     return results
 
 

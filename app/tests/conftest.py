@@ -90,6 +90,15 @@ def _no_finnish_egress(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     wilma_egress.reset()
 
 
+@pytest.fixture(autouse=True)
+def _no_run_report_leaves(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A run's Run Report never reaches the real gateway (ADR 0048): without the outbox, which
+    takes it (fake_outbox.py), the gateway doesn't answer."""
+    def unanswered(url: str, *_a: Any, **_k: Any) -> Any:
+        raise gateway.GatewayError(f"couldn't reach the gateway at {gateway.host(url)} (tests)")
+    monkeypatch.setattr(gateway, "post_report", unanswered)
+
+
 @pytest.fixture
 def login_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[[Path], None]:
     """The family's login shell, whose own setup (fish, nix, a custom npm prefix) puts the folder
@@ -389,6 +398,8 @@ class Harness:
     made_keys = _to("outbox", "made_keys")
     confirmations = _to("outbox", "confirmations")
     binds = _to("outbox", "binds")
+    reports = _to("outbox", "reports")
+    report_answer = _to("outbox", "report_answer")
     imessages = _to("outbox", "imessages")
     imessage_error = _to("outbox", "imessage_error")
     calendar = _to("outbox", "calendar")
