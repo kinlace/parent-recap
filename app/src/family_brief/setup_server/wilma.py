@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from pydantic import Field
 
 from .. import failure, install_record, setup_save, setup_wilma
-from ..setup_connect import Reply, Strict, parse
+from ..setup_connect import Nothing, Reply, Strict, parse
 from .context import Action, Context, Phase, nothing_to_give
 
 # What signing in to Wilma on the page can say. Only `sign-in-failed` offers the Terminal sign-in
@@ -49,7 +49,8 @@ class Wilma(Phase):
                 "api/wilma": self.sign_in_wilma,
                 "api/wilma/terminal": self.open_wilma_window,
                 "api/wilma/check": self.check_wilma_window,
-                "api/wilma/remove": self.remove_wilma}
+                "api/wilma/remove": self.remove_wilma,
+                "api/wilma/done": self.wilma_done}
 
     def state(self, progress: dict[str, Any]) -> dict[str, Any]:
         return {"wilma": {"signins": signins()}}
@@ -165,6 +166,28 @@ class Wilma(Phase):
         if status != HTTPStatus.OK:
             return status, out
         return status, {**out, "result": "removed", "signins": signins()}
+
+    def wilma_done(self, raw: Any) -> Reply:
+        """Continue, on a step that lists Wilmas already signed in to: Wilma is on and done, and
+        setup moves on, without signing in again. For sign-ins kept from before this setup's
+        progress, such as an install over an older one or a setup started again, which leave Wilma
+        to do with no sign-in form to do it (#1023). A Kid a kept Wilma lists that the Household
+        lacks is added by name; the others stay as they are."""
+        parse(Nothing, raw)
+        with self._lock:
+            kept = setup_wilma.signins()
+            if not kept:
+                return HTTPStatus.BAD_REQUEST, setup_save.outcome(
+                    "invalid-answers", "Sign in to a Wilma first, or skip Wilma.",
+                    errors=["answers: should be {}, once a Wilma is signed in to"])
+            names = [k.name for k in self.context.model().kids]
+            known = {n.casefold() for n in names}
+            for name in (n for p in kept for n in setup_wilma.student_names(p)):
+                if name.casefold() not in known:
+                    known.add(name.casefold())
+                    names.append(name)
+            return self.context.connect.complete("wilma", {
+                "kids": [{"name": n} for n in names], "sources": {"wilma": {"enabled": True}}})
 
     def _signed_in(self, profile_id: str | None, kids: list[dict[str, Any]],
                    city: str | None) -> Reply:
