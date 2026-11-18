@@ -49,8 +49,8 @@ irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | 
 
 ## 隐私
 
-- Parent Recap 在你自己的电脑上运行。它唯一的服务器是维护者的网关，用 `brief@parentrecap.com` 发出日报，不保留副本。如果日报由 Claude 或 ChatGPT 写，而且你连接了 Gmail，也可以改用你自己的 Gmail 发，这样就完全不经过我们的服务器，除非你打开运行报告（Run Report）
-- 每晚运行结束后，你的电脑会给网关发一份运行报告：这次运行结果如何，只用固定的词和数字（版本、用了多久、每个来源读到多少或为什么失败、日报有没有发出、上一次更新结果如何），从不包含你的消息、名字、地址或路径。发出去的就是这次运行写进 `~/.family/last-run.json` 的内容，网关保留 30 天。日报经网关发送时它默认打开，用设置页面“完成”一步里的开关，或在配置里写 `run_report.enabled: false`，可以关掉。用你自己的 Gmail 发日报时它默认关闭；除非你用同一个开关或 `run_report.enabled: true` 打开它，或者发送问题报告，否则什么都不会发到我们的服务器。你的电脑仍会连接你的 AI、Gmail、各个来源，并为了更新连接 GitHub
+- Parent Recap 在你自己的电脑上运行。它唯一的服务器是维护者的网关，用 `brief@parentrecap.com` 发出日报，不保留副本。如果日报由 Claude 或 ChatGPT 写，而且你连接了 Gmail，也可以改用你自己的 Gmail 发，这样就完全不经过我们的服务器，除非你打开运行报告（Run Report）或发送问题报告
+- 每晚运行结束后，你的电脑会给网关发一份运行报告：这次运行结果如何，只用固定的词和数字（版本、用了多久、每个来源读到多少或为什么失败、日报有没有发出、上一次更新结果如何），从不包含你的消息、名字、地址或路径。发出去的就是这次运行写进 `~/.family/last-run.json` 的内容，网关保留 30 天。日报经网关发送时它默认打开，用设置页面“完成”一步里的开关，或在配置里写 `run_report.enabled: false`，可以关掉。用你自己的 Gmail 发日报时它默认关闭；除非你用同一个开关或 `run_report.enabled: true` 打开它，或者发送问题报告，否则什么都不会发到我们的服务器。你的电脑仍会连接你的 AI、Gmail、各个来源，以及 [SECURITY.md](SECURITY.md#delivering) 列出的其他服务器，比如更新时连接的 GitHub
 - 密码（包括 Wilma 的）存在电脑自带的密码库里：Mac 上是钥匙串，Windows 上是凭据管理器
 - Gmail 只读你选的发件人的邮件，只有你自己选了才会用它发日报；WhatsApp 只保留你选的群
 - 每份日报和它依据的消息都存档在你的电脑上，在 `~/ParentRecap/` 里
