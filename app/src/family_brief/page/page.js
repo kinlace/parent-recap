@@ -1146,6 +1146,9 @@ function renderWilma() {
   document.getElementById("wilma-passwords").addEventListener("click", () => openSite("passwords"));
   document.getElementById("wilma-passwords").hidden = page.system !== "macos"; // macOS's own app
   document.getElementById("wilma-terminal").addEventListener("click", openWilmaWindow);
+  // With a Wilma signed in to, the way on, also for one kept from before this setup (#1023).
+  document.getElementById("wilma-continue").addEventListener(
+    "click", () => moveOn("api/wilma/done", {}));
   document.getElementById("wilma-again").addEventListener("click", getWilmaReady);
   document.getElementById("wilma-add").addEventListener("click", () => {
     wilmaStep.adding = true;
@@ -1164,7 +1167,8 @@ function prepareWilma() {
 
 // Once a Wilma is signed in to, the step lists each one with the Kids it shows, and the sign-in
 // form waits behind "Add another Wilma", for Kids at a school in another town or on another
-// guardian login (#647). With two or more, each can be removed.
+// guardian login (#647), with Continue beside it as the way on (#1023). With two or more, each can
+// be removed.
 function showWilmaSignins() {
   const signins = page.wilma.signins;
   const form = signins.length === 0 || wilmaStep.adding;

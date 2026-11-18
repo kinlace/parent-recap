@@ -1138,6 +1138,79 @@ def test_a_family_adds_a_second_wilma_and_removes_it(tab, family, wilma_cli):  #
     assert [k.name for k in Config.load(config_file(family)).kids] == ["Mia Virtanen"]
 
 
+def to_do_again(family, source: str) -> None:
+    """A setup started again, or over an older install: the sign-ins kept, and the progress has
+    `source` to do once more, as the current step (#1023)."""
+    progress = json.loads(progress_file(family).read_text())
+    save_progress(family, {**progress, "source": source,
+                           "sources": {**progress["sources"], source: "to-do"}})
+
+
+def test_a_wilma_kept_from_before_while_wilma_is_to_do_goes_on_to_check(tab, family, wilma_cli):  # noqa: F811
+    # #1023: with a Wilma signed in to and Wilma to do, the step showed the Wilma and "Add
+    # another Wilma" only, with no way on.
+    espoo = "https://espoo.inschool.fi"
+    wilma_cli.accounts = {f"{espoo}|mia.parent": "Salasana-1"}
+    wilma_cli.students_of = {f"{espoo}|mia.parent": [{"studentNumber": "1001", "name": "Mia Virtanen"}]}
+    wilma_cli.install()
+    in_english_with_the_gateway(tab)
+    sign_in_to_wilma(tab, "Espoo", "Espoon kaupunki", "mia.parent", "Salasana-1")
+    expect(source_listed(tab, "wilma", "done")).to_be_visible()
+    tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
+    button(tab, "gateway.save").click()
+    expect(source_listed(tab, "ai", "done")).to_be_visible()
+    for name in ("whatsapp", "myclub", "eepos", "evaka", "gmail"):
+        skip(tab, name).click()
+        expect(source_listed(tab, name, "skipped")).to_be_visible()
+    to_do_again(family, "wilma")
+
+    tab.reload()
+
+    expect(source_listed(tab, "wilma", "to-do")).to_be_visible()
+    expect(tab.locator("#wilma-signin-list li")).to_have_count(1)
+    expect(button(tab, "wilma.sign-in")).to_be_hidden()
+    expect(tab.get_by_text(text("connect.done"))).to_be_hidden()
+    button(tab, "continue").click()
+    expect(source_listed(tab, "wilma", "done")).to_be_visible()
+    expect(tab.get_by_text(text("connect.done"))).to_be_visible()
+    button(tab, "continue").click()
+    expect(heading(tab, "check.title")).to_be_visible()
+    assert json.loads(progress_file(family).read_text())["sources"]["wilma"] == "done"
+    assert Config.load(config_file(family)).wilma.enabled is True
+
+
+@pytest.mark.parametrize("name", ["eepos", "evaka"])
+def test_an_eepos_or_evaka_sign_in_kept_while_its_step_is_to_do_goes_on_with_continue(tab, family,
+                                                                                    name):
+    # #1023, for the other Sources whose step lists sign-ins: Continue, not Skip, which would
+    # remove the sign-ins kept.
+    connect_up_to_myclub(tab)
+    skip(tab, "myclub").click()
+    if name == "eepos":
+        type_the_eepos_sign_in(tab)
+    else:
+        skip(tab, "eepos").click()
+        tab.get_by_label(text("evaka.city"), exact=True).select_option(label="Espoo")
+        tab.get_by_label(text("evaka.username")).fill(PARENT)
+        tab.get_by_label(text("evaka.password")).fill(EVAKA_PASSWORD)
+        button(tab, "evaka.save").click()
+    expect(tab.locator(f"#{name}-signin-list li")).to_have_count(1)
+    expect(source_listed(tab, name, "done")).to_be_visible()
+    to_do_again(family, name)
+
+    tab.reload()
+
+    expect(source_listed(tab, name, "to-do")).to_be_visible()
+    expect(tab.locator(f"#{name}-signin-list li")).to_have_count(1)
+    expect(skip(tab, name)).to_be_hidden()
+    button(tab, "continue").click()
+    expect(source_listed(tab, name, "done")).to_be_visible()
+    if name == "eepos":
+        expect(tab.get_by_label(text("evaka.city"), exact=True)).to_be_visible()
+    else:
+        expect(tab.get_by_text(text("gmail.explain"))).to_be_visible()
+
+
 def test_skipping_wilma_with_a_town_picked_saves_no_city(tab, family):
     in_english_with_the_gateway(tab)
 

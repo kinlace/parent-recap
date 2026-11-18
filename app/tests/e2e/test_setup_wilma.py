@@ -30,14 +30,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 import fake_node
 from family_brief import failure, install_record, own_node, setup_server, setup_wilma
 from family_brief.config import Config
 from fake_system import WINDOWS, Window
 from conftest import program
-from setup_page import (PAGE_DIR, Response, assert_never_leaked, call, config_file, inside, statuses,
-                        towns, wait_for, welcome)
+from setup_page import (PAGE_DIR, Response, assert_never_leaked, call, config_file, inside,
+                        progress_file, save_progress, statuses, towns, wait_for, welcome)
 from setup_page import clock, page  # noqa: F401
 
 # The tests of `parent-recap setup wilma` are each marked macos: the Wilma window's pseudo-terminal,
@@ -1469,6 +1470,48 @@ def test_the_only_wilma_is_not_removed_but_skipped(harness, page, two_towns):
 
     assert r.status == 400 and r.json()["result"] == "invalid-answers"
     assert two_towns.reads() == [f"{ESPOO}|mia.parent"]
+
+
+def wilma_to_do_again(harness) -> None:
+    """A setup started again, or over an older install: the Wilma sign-ins are kept, and the
+    progress has Wilma to do once more (#1023)."""
+    progress = json.loads(progress_file(harness).read_text())
+    save_progress(harness, {**progress, "source": "wilma",
+                            "sources": {**progress["sources"], "wilma": "to-do"}})
+
+
+def test_continue_with_a_wilma_kept_from_before_does_wilma_and_moves_on(harness, page, two_towns):
+    welcome(page.url)
+    sign_in_wilma(page.url)
+    sign_in_helsinki(page.url)
+    wilma_to_do_again(harness)
+    # The config lost Leo and Wilma was turned off since, as skipping it does.
+    config = yaml.safe_load(config_file(harness).read_text())
+    config["kids"] = [k for k in config["kids"] if k["name"] == "Mia Virtanen"]
+    config["wilma"]["enabled"] = False
+    config_file(harness).write_text(yaml.safe_dump(config))
+    assert statuses(page.url)["wilma"] == "to-do"
+
+    r = call(page.url, "api/wilma/done", method="POST", body={})
+
+    out = r.json()
+    assert r.status == 200 and out["progress"]["sources"]["wilma"] == "done"
+    assert out["progress"]["source"] not in ("wilma", None)  # on to the next Source
+    cfg = Config.load(config_file(harness))
+    # Wilma is read again, with the Kids of each Wilma kept, and the town as it was.
+    assert cfg.wilma.enabled is True and cfg.city == "Espoo"
+    assert [k.name for k in cfg.kids] == ["Mia Virtanen", "Leo Virtanen"]
+    assert two_towns.reads() == [f"{ESPOO}|mia.parent", f"{HELSINKI}|leo.parent"]
+
+
+def test_continue_needs_a_wilma_signed_in_first(harness, page, wilma_cli):
+    welcome(page.url)
+
+    r = call(page.url, "api/wilma/done", method="POST", body={})
+
+    assert r.status == 400 and r.json()["result"] == "invalid-answers"
+    assert statuses(page.url)["wilma"] == "to-do"
+    assert call(page.url, "api/wilma/done", method="POST", body={"x": 1}).status == 400
 
 
 @pytest.mark.macos
