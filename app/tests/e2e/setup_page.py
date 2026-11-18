@@ -258,6 +258,14 @@ def save_progress(harness, progress: dict[str, Any]) -> None:
     progress_file(harness).write_text(json.dumps(progress))
 
 
+def to_do_again(harness, source: str) -> None:
+    """A setup started again, or over an older install: the sign-ins kept, and the progress has
+    `source` to do once more, as the current step (#1023)."""
+    progress = json.loads(progress_file(harness).read_text())
+    save_progress(harness, {**progress, "source": source,
+                            "sources": {**progress["sources"], source: "to-do"}})
+
+
 APP_PASSWORD = "abcdefghijklmnop"
 
 
