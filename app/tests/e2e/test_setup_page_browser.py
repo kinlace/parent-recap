@@ -37,7 +37,7 @@ from family_brief.sources.fi.evaka import collector as evaka
 from family_brief.sources.fi.myclub import collector as myclub
 from fake_system import MACOS
 from setup_page import (CAN_LISTEN, PAGE_DIR, at_finish, at_the_check_step, config_file,
-                        more_progress, progress_file, save_progress, wait_for)
+                        more_progress, progress_file, save_progress, to_do_again, wait_for)
 from setup_page import ai, clock, health, page, schedule  # noqa: F401
 from test_setup_ai import GATEWAY_KEY
 from test_setup_ai import codex  # noqa: F401
@@ -1136,14 +1136,6 @@ def test_a_family_adds_a_second_wilma_and_removes_it(tab, family, wilma_cli):  #
     expect(signins).to_have_count(1)
     expect(signins.first).to_contain_text("mia.parent")
     assert [k.name for k in Config.load(config_file(family)).kids] == ["Mia Virtanen"]
-
-
-def to_do_again(family, source: str) -> None:
-    """A setup started again, or over an older install: the sign-ins kept, and the progress has
-    `source` to do once more, as the current step (#1023)."""
-    progress = json.loads(progress_file(family).read_text())
-    save_progress(family, {**progress, "source": source,
-                           "sources": {**progress["sources"], source: "to-do"}})
 
 
 def test_a_wilma_kept_from_before_while_wilma_is_to_do_goes_on_to_check(tab, family, wilma_cli):  # noqa: F811

@@ -1146,7 +1146,7 @@ function renderWilma() {
   document.getElementById("wilma-passwords").addEventListener("click", () => openSite("passwords"));
   document.getElementById("wilma-passwords").hidden = page.system !== "macos"; // macOS's own app
   document.getElementById("wilma-terminal").addEventListener("click", openWilmaWindow);
-  // With a Wilma signed in to, the way on, also for one kept from before this setup (#1023).
+  // Continue moves on once a Wilma is signed in to, also one kept from before this setup (#1023).
   document.getElementById("wilma-continue").addEventListener(
     "click", () => moveOn("api/wilma/done", {}));
   document.getElementById("wilma-again").addEventListener("click", getWilmaReady);

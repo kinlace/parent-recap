@@ -37,8 +37,8 @@ from family_brief import failure, install_record, own_node, setup_server, setup_
 from family_brief.config import Config
 from fake_system import WINDOWS, Window
 from conftest import program
-from setup_page import (PAGE_DIR, Response, assert_never_leaked, call, config_file, inside,
-                        progress_file, save_progress, statuses, towns, wait_for, welcome)
+from setup_page import (PAGE_DIR, Response, assert_never_leaked, call, config_file, inside, statuses,
+                        to_do_again, towns, wait_for, welcome)
 from setup_page import clock, page  # noqa: F401
 
 # The tests of `parent-recap setup wilma` are each marked macos: the Wilma window's pseudo-terminal,
@@ -1472,19 +1472,11 @@ def test_the_only_wilma_is_not_removed_but_skipped(harness, page, two_towns):
     assert two_towns.reads() == [f"{ESPOO}|mia.parent"]
 
 
-def wilma_to_do_again(harness) -> None:
-    """A setup started again, or over an older install: the Wilma sign-ins are kept, and the
-    progress has Wilma to do once more (#1023)."""
-    progress = json.loads(progress_file(harness).read_text())
-    save_progress(harness, {**progress, "source": "wilma",
-                            "sources": {**progress["sources"], "wilma": "to-do"}})
-
-
 def test_continue_with_a_wilma_kept_from_before_does_wilma_and_moves_on(harness, page, two_towns):
     welcome(page.url)
     sign_in_wilma(page.url)
     sign_in_helsinki(page.url)
-    wilma_to_do_again(harness)
+    to_do_again(harness, "wilma")
     # The config lost Leo and Wilma was turned off since, as skipping it does.
     config = yaml.safe_load(config_file(harness).read_text())
     config["kids"] = [k for k in config["kids"] if k["name"] == "Mia Virtanen"]
@@ -1504,7 +1496,7 @@ def test_continue_with_a_wilma_kept_from_before_does_wilma_and_moves_on(harness,
     assert two_towns.reads() == [f"{ESPOO}|mia.parent", f"{HELSINKI}|leo.parent"]
 
 
-def test_continue_needs_a_wilma_signed_in_first(harness, page, wilma_cli):
+def test_continue_needs_a_wilma_signed_in_first_and_takes_no_answers(harness, page, wilma_cli):
     welcome(page.url)
 
     r = call(page.url, "api/wilma/done", method="POST", body={})
