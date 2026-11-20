@@ -216,7 +216,7 @@ slowest tests, so add one for a main path, not for each result.
 
 | File           | What it covers                                                                                                                |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `test_demo.py` | `parent-recap demo` (#1029): the made-up week's whole Brief sent, no Source read, nothing of the Household changed, saved when the gateway won't send |
+| `test_demo.py` | `parent-recap demo` (#1029): the made-up week's whole Brief sent, no Source read, nothing of the Household changed, its own send-only key held in memory and the address confirmed, saved when it isn't |
 
 ## Adapter tests
 

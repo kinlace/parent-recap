@@ -83,12 +83,13 @@ def write_to(cfg: Config) -> str | None:
 
 
 def gateway(url: str, subject: str, body_text: str, to_addrs: list[str],
-            body_html: str | None = None, attachments: Attachments | None = None) -> None:
-    """Send through the gateway's Brief relay at `url` with the Gateway Key (ADR 0028). A refused
-    send raises GatewayError as a failed model call does, and is never tried again here: the
-    relay may have sent it, and the next run sends the night again. Without a Gateway Key it
-    raises NoKey."""
-    gateway_key = api.key()
+            body_html: str | None = None, attachments: Attachments | None = None,
+            gateway_key: str | None = None) -> None:
+    """Send through the gateway's Brief relay at `url` with the Gateway Key (ADR 0028), or with
+    `gateway_key`, one the caller holds itself, such as the demo's (#1029). A refused send raises
+    GatewayError as a failed model call does, and is never tried again here: the relay may have
+    sent it, and the next run sends the night again. Without a Gateway Key it raises NoKey."""
+    gateway_key = gateway_key or api.key()
     body: dict = {"to": list(to_addrs), "subject": subject, "text": body_text}
     if body_html:
         body["html"] = body_html
