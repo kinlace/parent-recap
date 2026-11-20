@@ -107,7 +107,7 @@ Every step of the setup page has a **Continue in the chat** button, for a family
 
 **Introduction.** In a few sentences: every evening Parent Recap reads the Kids' school mail, Wilma and MyClub, and emails each parent a short Brief in their own language, with new events attached for the calendar. Then say:
 
-- What a Brief looks like: the link to the demo in the invite the Parent Recap team sent them. If they don't have it, describe a Brief in a sentence: grouped by Kid, with Notices and Action Items with due dates
+- What a Brief looks like: the link to the demo in the invite the Parent Recap team sent them. If they don't have it, describe a Brief in a sentence: grouped by Kid, with Notices and Action Items with due dates. If they'd like to see a real one first ("show me a demo Brief"), follow "A demo Brief" in `PLUGIN/skills/manage/SKILL.md`, then come back here
 - Where the data goes: it's read on this Mac. Only that night's messages from the Kids' Sources go to the AI the family already uses, to write the Brief. The Brief is sent from Parent Recap's own address, `brief@parentrecap.com`, through the Parent Recap team's server, which keeps neither the Brief nor the addresses. Nobody reads that address: each Brief says to write to the parent instead. Nothing else goes to the Parent Recap team.
 - What it costs: Claude needs the paid plan the family already has, Claude Pro or Max. ChatGPT works on any plan, Free included. Nothing else costs money.
 - That it needs a Mac that is on in the evening. Every Brief is sent with a Gateway Key: setup gets one for sending by itself, and each Recipient confirms their address once through a link in an email from `brief@parentrecap.com`. Gmail is only needed if school mail arrives there, and is only read.
