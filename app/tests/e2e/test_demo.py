@@ -17,6 +17,7 @@ import yaml
 
 from conftest import NOW
 from family_brief import __main__ as cli, gateway, sources as registry
+from family_brief import demo as demo_module
 from family_brief.brief_text import TEXT
 
 FRIEND = "friend@example.com"
@@ -157,27 +158,79 @@ def test_without_a_config_the_demo_runs_with_claude(harness, capsys, monkeypatch
     assert not (harness.home / ".family" / "config.yaml").exists()
 
 
-@pytest.mark.parametrize("key", [None, "bound to the Household"])
-def test_a_demo_the_gateway_wont_send_is_saved_to_a_file_instead(harness, capsys, monkeypatch, tmp_path, key):
-    """With no Gateway Key, as before setup, or a send-only one bound to the Household's
-    Recipients, the Brief can't be mailed: it is saved as a page to open instead, and the demo
-    says why."""
+HOUSEHOLD_KEY = "sk-bf-made-on-request-household"
+
+
+def bound_to_the_household(harness) -> None:
+    """A send-only Gateway Key in the store, bound to the Household's confirmed parent (ADR 0033)."""
+    harness.secrets[gateway.ACCOUNT] = HOUSEHOLD_KEY
+    harness.outbox.made_keys[HOUSEHOLD_KEY] = [{"address": "parent@example.com", "language": "en"}]
+    harness.confirm("parent@example.com")
+
+
+@pytest.fixture
+def waits(monkeypatch) -> list[float]:
+    """Each pause while the demo waits for its address to be confirmed, moving its clock on."""
+    paused: list[float] = []
+    monkeypatch.setattr(demo_module, "_sleep", paused.append)
+    monkeypatch.setattr(demo_module, "_clock", lambda: sum(paused))
+    return paused
+
+
+@pytest.mark.parametrize("key", ["none, as before setup", "bound to the Household"])
+def test_a_demo_the_stored_key_cant_send_asks_for_its_own_key_and_sends_once_confirmed(
+        harness, capsys, monkeypatch, waits, key):
+    if key != "none, as before setup":
+        bound_to_the_household(harness)
+    store_before = dict(harness.secrets)
+    harness.model_reply = demo_reply
+    # The friend presses the link in the gateway's email a minute into the wait.
+    monkeypatch.setattr(demo_module, "_sleep",
+                        lambda s: (waits.append(s), len(waits) == 6 and harness.confirm(FRIEND)))
+
+    code = harness.cli("demo", "--to", FRIEND, "--language", "fi")
+
+    lines = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+    assert code == 0
+    assert lines == [{"demo": "confirm", "to": FRIEND, "minutes": 15}, {"demo": "sent", "to": FRIEND}]
+    assert harness.key_requests == [[{"address": FRIEND, "language": "fi"}]]
+    assert harness.confirmations == [(FRIEND, "fi")]
+    [email] = harness.sent
+    assert email.to == [FRIEND] and TEXT["fi"].demo in email.text
+    [demo_key] = [k for k in harness.made_keys if k != HOUSEHOLD_KEY]
+    assert harness.relay_keys[-1] == demo_key
+    # Held in memory only: the store and the Household's key and its Recipients are as they were
+    assert dict(harness.secrets) == store_before
+    assert harness.made_keys.get(HOUSEHOLD_KEY, [{"address": "parent@example.com", "language": "en"}]) == [
+        {"address": "parent@example.com", "language": "en"}]
+    assert all(b["key"] == demo_key for b in harness.binds)
+
+
+def test_a_demo_whose_address_isnt_confirmed_in_time_is_saved_to_a_file_instead(
+        harness, capsys, monkeypatch, tmp_path, waits):
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
-    harness.gateway_key = None
-    if key:
-        harness.secrets[gateway.ACCOUNT] = "sk-bf-made-on-request-0"
-        harness.outbox.made_keys["sk-bf-made-on-request-0"] = [{"address": "parent@example.com", "language": "en"}]
-        harness.confirm("parent@example.com")
     harness.model_reply = demo_reply
 
     code, printed = demo(harness, capsys, "--to", FRIEND, "--language", "en")
 
     assert code == 1 and printed["demo"] == "saved"
-    assert FRIEND in printed["why"] and "Gateway Key" in printed["why"]
+    assert f"{FRIEND} wasn't confirmed within 15 minutes" in printed["why"]
+    assert sum(waits) >= 15 * 60
     page = Path(printed["file"])
     assert page.parent == tmp_path and page.suffix == ".html"
     assert escape(TEXT["en"].demo) in page.read_text(encoding="utf-8")
     assert harness.sent == []
+
+
+def test_a_demo_the_gateway_gives_no_key_says_why_before_asking_the_ai(harness, capsys):
+    harness.outbox.key_answer = (429, {"error": "too many keys today"})
+    harness.model_reply = demo_reply
+
+    code, printed = demo(harness, capsys, "--to", FRIEND, "--language", "en")
+
+    assert code == 1 and printed["demo"] == "failed"
+    assert "Gateway Key" in printed["why"] and "tomorrow" in printed["why"]
+    assert harness.model_calls == [] and harness.sent == []
 
 
 def test_a_demo_the_model_couldnt_write_is_not_sent(harness, capsys):

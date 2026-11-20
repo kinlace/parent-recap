@@ -7,14 +7,19 @@ week.yaml, what each Source would have given the evening run. They go through th
 own steps (run.demo_mail): the AI filter, a Held-back Message, the model's Digest, Notices, Action
 Items and group digests, and the new events as an .ics. No Source is read and no Source's secret
 is taken from the store: what leaves the computer is the model's call, by the AI the Household
-already uses (Claude Code before setup), and the Brief, sent through the gateway with the Gateway
-Key. The demo keeps its state and the program's translated text in a folder of its own, which it
-deletes after, so the Household's config, state and archive stay as they were, and it is no
-evening run: it leaves no Run Report.
+already uses (Claude Code before setup), and the Brief, sent through the gateway. The demo keeps
+its state and the program's translated text in a folder of its own, which it deletes after, so the
+Household's config, state and archive stay as they were, and it is no evening run: it leaves no
+Run Report.
 
-A send-only Gateway Key sends only to the Household's confirmed Recipients (ADR 0033), and before
-setup there is none: a Brief the gateway won't send is saved as a page in the temporary folder
-instead, to open in a browser."""
+The Brief goes with the Gateway Key in the store when that key may send to the address: a key the
+maintainers handed out sends anywhere. Otherwise, as before setup, when there is none, or with a
+send-only key bound to the Household's Recipients (ADR 0033), the demo asks the gateway for a
+send-only key of its own, bound to the demo's address alone, which mails that address a
+confirmation link. It holds that key in memory only, never in the store, so the Household's own
+key and its Recipients stay as they were. Once the address is confirmed, within CONFIRM_WAIT, the
+Brief goes out with it; a Brief that can't be sent is saved as a page in the temporary folder, to
+open in a browser."""
 from __future__ import annotations
 
 import argparse
@@ -22,6 +27,7 @@ import json
 import logging
 import re
 import tempfile
+import time as timing
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -30,7 +36,7 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from .. import languages
+from .. import gateway, languages
 from .. import sources as registry
 from ..actions import email as email_action
 from ..collectors.base import CalendarEvent, Message
@@ -141,26 +147,92 @@ def _households_ai(config: str | None, backend: str | None) -> LLMConfig:
     return llm.model_copy(update={"backend": backend}) if backend else llm
 
 
+# How long the demo waits for its address to be confirmed, and how often it asks the gateway.
+CONFIRM_WAIT = 15 * 60
+CONFIRM_EVERY = 10
+_sleep = timing.sleep
+_clock = timing.monotonic
+
+
+def _say(line: dict[str, Any]) -> None:
+    """One line of JSON for whoever runs the demo, as it goes."""
+    print(json.dumps(line, ensure_ascii=False), flush=True)
+
+
+class _DemoKey:
+    """A send-only Gateway Key of the demo's own, bound to its address alone (ADR 0033), held in
+    memory only: asked for once, when the store's key can't send to the address."""
+
+    def __init__(self, url: str, to: str, language: str) -> None:
+        self.url, self.recipients = url, [{"address": to.lower(), "language": language}]
+        self.key: str | None = None
+
+    def ask(self) -> None:
+        """Asks the gateway for the key, which mails the address its confirmation link."""
+        if self.key is None:
+            self.key = gateway.request_send_key(self.url, self.recipients).key
+            _say({"demo": "confirm", "to": self.recipients[0]["address"],
+                  "minutes": CONFIRM_WAIT // 60})
+
+    def confirmed(self) -> bool:
+        """Waits up to CONFIRM_WAIT for the address to be confirmed."""
+        assert self.key is not None
+        deadline = _clock() + CONFIRM_WAIT
+        while True:
+            if not gateway.bind(self.url, self.key, self.recipients).unconfirmed:
+                return True
+            if _clock() >= deadline:
+                return False
+            _sleep(CONFIRM_EVERY)
+
+
+def _stored_key() -> str | None:
+    """The Gateway Key in the store, or None, as before setup."""
+    try:
+        return gateway.key()
+    except gateway.NoKey:
+        return None
+
+
 def run(to: str, language: str, llm: LLMConfig) -> dict[str, str]:
     """Makes the demo's Brief and sends it to `to`: what happened, as the command prints it."""
     from .. import run as evening
-    with tempfile.TemporaryDirectory(prefix="parent-recap-demo-") as folder, \
-            diagnostics_in(Path(folder) / "logs"):  # a failed model call's too
-        cfg = household(to, language, llm, Path(folder))
-        sample = week(datetime.now(ZoneInfo(cfg.timezone)))
-        mail, error = evening.demo_mail(cfg, sample.messages, sample.events, sample.coverage())
+    url = llm.gateway_url
+    demo_key, stored = _DemoKey(url, to, language), _stored_key()
+    try:
+        if stored is None:  # asked for first, so its link arrives while the AI writes
+            demo_key.ask()
+        with tempfile.TemporaryDirectory(prefix="parent-recap-demo-") as folder, \
+                diagnostics_in(Path(folder) / "logs"):  # a failed model call's too
+            cfg = household(to, language, llm, Path(folder))
+            sample = week(datetime.now(ZoneInfo(cfg.timezone)))
+            mail, error = evening.demo_mail(cfg, sample.messages, sample.events, sample.coverage())
+    except (gateway.GatewayError, OSError) as e:  # TimeoutError and requests' errors among them
+        return {"demo": "failed", "why": f"the gateway didn't give the demo a Gateway Key for {to}: {e}"}
     if error is not None:
         return {"demo": "failed", "why": f"the AI couldn't write the Brief: {error}"}
+
+    def send(key: str) -> None:
+        email_action.gateway(url, mail.subject, mail.text, mail.to, mail.html, mail.attachments, key)
+
+    why = ""
     try:
-        email_action.gateway(cfg.llm.gateway_url, mail.subject, mail.text, mail.to, mail.html, mail.attachments)
+        if stored is not None:
+            try:
+                send(stored)
+                return {"demo": "sent", "to": to}
+            except gateway.GatewayError as e:  # a send-only key bound to other addresses
+                log.info("The stored Gateway Key didn't send the demo to %s (%s), so it asks for its own", to, e)
+                demo_key.ask()
+        if demo_key.confirmed():
+            send(demo_key.key or "")
+            return {"demo": "sent", "to": to}
+        why = f"{to} wasn't confirmed within {CONFIRM_WAIT // 60} minutes"
     except Exception as e:  # noqa: BLE001 - whatever stopped it, the Brief is kept to open; a
-        # gateway error comes without the key (email.gateway)
-        page = Path(tempfile.gettempdir()) / f"parent-recap-demo-{language}.html"
-        page.write_text(mail.html, encoding="utf-8")
-        return {"demo": "saved", "file": str(page),
-                "why": f"the Brief couldn't be sent to {to}: {e}. A Gateway Key sent on request sends only "
-                       "to the Household's confirmed Recipients"}
-    return {"demo": "sent", "to": to}
+        why = str(e)        # gateway error comes without the key (email.gateway)
+    page = Path(tempfile.gettempdir()) / f"parent-recap-demo-{language}.html"
+    page.write_text(mail.html, encoding="utf-8")
+    return {"demo": "saved", "file": str(page), "why": f"the Brief couldn't be sent to {to}: {why}"}
 
 
 def _address(value: str) -> str:
@@ -172,7 +244,7 @@ def _address(value: str) -> str:
 
 def cmd_demo(args: argparse.Namespace) -> int:
     result = run(args.to, args.language, _households_ai(args.config, args.ai))
-    print(json.dumps(result, ensure_ascii=False))
+    _say(result)
     return 0 if result["demo"] == "sent" else 1
 
 
