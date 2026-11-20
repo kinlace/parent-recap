@@ -84,6 +84,10 @@ The computer wakes up for the Brief, but a closed laptop, on battery especially,
 
 If the computer was off, asleep or signed out at Brief time, the missed Brief is sent when the computer is back on, as long as that is within 10 hours of the Brief time (for 21:00, until 07:00 the next morning). It says at the top that it was sent late, and covers everything since the last Brief. Later than that, nothing is sent then: the next evening's Brief covers the missed evening too, so you don't get two Briefs an hour apart. A Brief you start yourself always runs.
 
+### Can I see a real Brief before connecting anything?
+
+Yes. Once Parent Recap is installed, type `parent-recap demo --to you@example.com --language en` in Terminal or PowerShell (`fi` or `zh` for Finnish or Chinese), or ask the setup chat for a demo Brief. Parent Recap then runs once on a made-up family's week and emails you the Brief it writes, which says at the top that it's a demo. No Source is read and nothing of your settings, state or archive changes: only the AI call, with the AI your computer already uses, and the Brief's delivery leave the computer. The Brief is sent through the maintainers' gateway, so it needs a Gateway Key that may send to that address: an invited family's key, or after setup your own key, to your confirmed address. Without one the Brief is saved as a page on your computer for you to open instead. [SECURITY.md](SECURITY.md#the-demo-brief) has the details.
+
 ## Thanks
 
 Parent Recap reads Wilma through Antti Karjalainen's [wilma CLI](https://github.com/aikarjal/wilmai) (WilmAI), free and open source under MIT. Without it there would be no Wilma in the Brief.

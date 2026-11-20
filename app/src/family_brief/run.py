@@ -49,6 +49,8 @@ class Options:
     # Started by the system's scheduler (jobs.SCHEDULED), not by hand: a start well after the
     # Brief's time catches up a missed evening, and only within CATCH_UP_LIMIT (#894).
     scheduled: bool = False
+    # The demo's Brief (#1029, demo/), which says it is one and nothing about the program's update.
+    demo: bool = False
 
 
 @dataclass(frozen=True)
@@ -490,16 +492,19 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         # The rule-based fallback is a raw message list the model never wrote, and a night with only
         # Source events listed before or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=asks_model and notes.error is None,
-        stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
-        hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_what_the_update_did(cfg, options))
+        # The demo's Recipient set nothing up, so its Brief names nobody to write to.
+        stamp=datetime.now(timezone.utc), incomplete=notes.incomplete,
+        write_to=None if options.demo else email_action.write_to(cfg),
+        hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_what_the_update_did(cfg, options),
+        demo=options.demo)
     return _Written(night, notes, for_ai, held, model_events, placeholders, asks_model)
 
 
 def _update_folder(cfg: Config, options: Options) -> Path | None:
     """Parent Recap's folder where tonight's Brief says what the evening's update did (#916): only
     on a family's own Mac or PC, where the program updates itself (ADR 0047, ADR 0052), and not
-    in the setup page's Brief."""
-    if cfg.hosted or options.preview or options.first or \
+    in the setup page's Brief or the demo's."""
+    if cfg.hosted or options.preview or options.first or options.demo or \
             profile.current().system not in ("macos", "windows"):
         return None
     from . import own_node
@@ -588,6 +593,26 @@ def _log_preview(cfg: Config, coverage: dict[str, dict], held: list[Message], wr
             f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} INFO {log.name} | {line}\n")
     except OSError as e:
         log.warning("Couldn't add the preview's line to %s: %s", path, e)
+
+
+# ── The demo's Brief
+
+def demo_mail(cfg: Config, messages: list[Message], events: list[CalendarEvent],
+              coverage: dict[str, dict]) -> tuple[render.Mail, str | None]:
+    """The demo's Brief (#1029) as a mail to `cfg`'s one Recipient, made from the made-up
+    Household's `messages` and `events` as tonight's would be from what the Sources gave: the AI
+    filter, Held-back Messages, the model's Brief and the new events as .ics. `cfg` keeps its state
+    in a folder of the demo's own: nothing is saved there, and no Source is read. With the error
+    the model's call ended on, when the Brief is the rule-based list instead."""
+    started = datetime.now(ZoneInfo(cfg.timezone))
+    tomorrow = started.date() + timedelta(days=1)
+    read = _Read(started, messages, events, coverage, earlier=[], due_soon=False,
+                 event_tomorrow=any(e.start.date() == tomorrow for e in events))
+    # In ics mode the run reaches none of IO's ports while it writes the Brief.
+    written = _write(cfg, Options(demo=True), IO.real(), State(cfg.resolved_state_path()), read,
+                     sends=True, watch=slept.Watch(), caught_up=False)
+    [version] = _versions(cfg, written)
+    return render.mail(written.night, version), written.notes.error
 
 
 # ── The run

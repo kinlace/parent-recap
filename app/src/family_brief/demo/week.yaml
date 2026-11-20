@@ -1,0 +1,249 @@
+# A week of the demo Household's news (#1029), from each Source the Brief covers: what each
+# Source's collector would have given the evening run. Every name, school, club, daycare,
+# address and phone number is invented.
+#
+# When things happen is counted from the evening the demo runs, so the week is always this one:
+# `day` is a number of days (-1 yesterday, 0 today, 2 the day after tomorrow) or of weekdays,
+# Monday to Friday, with a `w` (-1w the last weekday before today, 3w the third one after it).
+# In a text, {+3w} is that day as a Finnish message writes it ("to 27.11.") and {en:+3w} as an
+# English one does ("Thu 27 Nov"). A time is in the Household's zone.
+#
+# One message, the school's email about a pedagogical assessment, has words that make it look
+# sensitive (sensitive_words.yaml): it is held back from the AI and listed by the Brief itself.
+
+messages:
+  # ── Wilma
+  - source: wilma
+    id: demo-wilma-exam
+    day: -3w
+    time: "15:20"
+    sender: Opettaja Laura Niemi
+    subject: Matematiikan koe
+    chat: Viestit
+    kid: Ella
+    metadata: {wilma_kind: message}
+    body: |
+      Hei 2B:n huoltajat!
+      Matematiikan koe on {+2w} ensimmäisellä tunnilla. Kokeessa on kertotaulut 2–5 ja kellonajat.
+      Harjoitelkaa kotona kirjan sivuja 48–53. Kertotaulupelit löytyvät myös oppimisalustalta.
+      Ystävällisin terveisin, Laura Niemi
+  - source: wilma
+    id: demo-wilma-bring
+    day: -1w
+    time: "13:45"
+    sender: Opettaja Laura Niemi
+    subject: Uintia liikuntatunnilla
+    chat: Viestit
+    kid: Ella
+    metadata: {wilma_kind: message}
+    body: |
+      Hei!
+      Liikuntatunnilla {+3w} menemme uimahalliin. Lapsella pitää olla mukana uimapuku tai
+      uimahousut, pyyhe ja uimalakki. Jos lapsi ei voi uida, kertokaa minulle viimeistään {+2w},
+      niin sovitaan hänelle muuta tekemistä.
+      Laura
+  - source: wilma
+    id: demo-wilma-schedule
+    day: -2w
+    time: "09:10"
+    sender: Rehtori Markku Salo
+    subject: Muutos koulupäivän alkuun
+    chat: Tiedotteet
+    metadata: {wilma_kind: news}
+    body: |
+      Hyvät huoltajat,
+      opettajien koulutuspäivän vuoksi koulu alkaa {+1w} kaikilla luokilla vasta klo 10.00.
+      Aamupäiväkerho on auki normaalisti klo 7.30 alkaen niille, jotka ovat siihen ilmoittautuneet.
+      Koululounas syödään tavalliseen aikaan.
+      Markku Salo, rehtori, Kuusikallion koulu
+  - source: wilma
+    id: demo-wilma-answer
+    day: 0
+    time: "11:30"
+    sender: Opettaja Laura Niemi
+    subject: Retki Planetaarioon – vastaathan
+    chat: Viestit
+    kid: Ella
+    metadata: {wilma_kind: message}
+    body: |
+      Hei!
+      Lähdemme koko luokan kanssa tiederetkelle Planetaarioon {+5w} klo 9–13. Retki on maksuton.
+      Vastaattehan tähän viestiin viimeistään {+2w}, saako Ella osallistua, ja onko hänellä
+      ruoka-aineallergioita, jotka meidän pitää huomioida eväissä.
+      Kiitos! Laura
+
+  # ── School email
+  - source: gmail
+    id: "7300000000000000101"
+    day: -4w
+    time: "16:00"
+    sender: Kuusikallion koulu <tiedotus@kuusikallio.example.fi>
+    subject: Kuukauden tiedote
+    metadata: {mailing_list: true}
+    body: |
+      Hyvät Kuusikallion koulun perheet,
+
+      Tämän kuun tärkeimmät asiat:
+      - Luokkakuvat otetaan {+4w} aamupäivällä. Kuvat voi tilata verkosta kahden viikon ajan.
+      - Löytötavarat ovat esillä aulassa {+6w} asti. Sen jälkeen ne viedään kierrätykseen.
+      - Vanhempainyhdistyksen myyjäiset pidetään koulun salissa {+8w} klo 17–19. Leivonnaisia
+        otetaan vastaan kanttiinissa samana päivänä.
+
+      Mukavaa kuukautta toivottaen,
+      Kuusikallion koulun väki
+  - source: gmail
+    id: "7300000000000000102"
+    day: -1w
+    time: "18:12"
+    sender: Iltapäiväkerho Tähti <tahti@kuusikallio.example.fi>
+    subject: Iltapäiväkerhon laskut ja loma-ajan hoito
+    body: |
+      Hei!
+      Seuraavan kuun laskut lähtevät ensi viikolla. Ilmoittakaa {+4w} mennessä, tarvitseeko
+      lapsenne hoitoa seuraavan loman ensimmäisellä viikolla. Ilmoittautuminen tehdään
+      vastaamalla tähän viestiin.
+      Terveisin, kerho-ohjaaja Sanna
+  - source: gmail
+    id: "7300000000000000103"
+    day: -1
+    time: "10:40"
+    sender: Erityisopettaja Hanna Lehto <hanna.lehto@kuusikallio.example.fi>
+    subject: Ellan lukemisen tukeminen
+    body: |
+      Hei,
+      Ellan pedagoginen arvio on nyt valmis. Ehdottaisin, että käymme sen yhdessä läpi
+      tapaamisessa ensi viikolla. Sopisiko teille jokin iltapäivä?
+      Ystävällisin terveisin, Hanna Lehto
+
+  # ── WhatsApp: Ella's class parents, in Finnish
+  - source: whatsapp
+    id: demo-wa-2b-1
+    day: -3
+    time: "20:14"
+    sender: Mari (Veetin äiti)
+    chat: 2B vanhemmat
+    kid: Ella
+    metadata: {from_me: false, digest: true}
+    body: Moi kaikki! Luokan illanvietto olisi tarkoitus pitää koululla {+9w} klo 17–19. Käykö teille?
+  - source: whatsapp
+    id: demo-wa-2b-2
+    day: -3
+    time: "20:31"
+    sender: Juha
+    chat: 2B vanhemmat
+    kid: Ella
+    metadata: {from_me: false, digest: true}
+    body: Meille käy hyvin! Voin tuoda mehua ja mukeja.
+  - source: whatsapp
+    id: demo-wa-2b-3
+    day: -2
+    time: "07:55"
+    sender: Mari (Veetin äiti)
+    chat: 2B vanhemmat
+    kid: Ella
+    metadata: {from_me: false, digest: true}
+    body: Hienoa! Tehdään niin, että jokainen tuo jotain pientä syötävää. Laitan listan tänne illalla.
+  - source: whatsapp
+    id: demo-wa-2b-4
+    day: -1
+    time: "19:02"
+    sender: Anna
+    chat: 2B vanhemmat
+    kid: Ella
+    metadata: {from_me: false, digest: true}
+    body: Onko kenelläkään tullut kotiin vaaleanpunaista pipoa, jossa on tupsu? Liisan pipo katosi koululla.
+  - source: whatsapp
+    id: demo-wa-2b-5
+    day: 0
+    time: "17:20"
+    sender: Mari (Veetin äiti)
+    chat: 2B vanhemmat
+    kid: Ella
+    metadata: {from_me: false, digest: true}
+    body: |
+      Illanvieton tarjoilulista, kirjoittakaa nimenne perään:
+      - keksejä
+      - hedelmiä
+      - suolaista naposteltavaa
+      - mehua (Juha)
+
+  # ── WhatsApp: Otto's daycare families, in English
+  - source: whatsapp
+    id: demo-wa-sk-1
+    day: -2
+    time: "21:05"
+    sender: Priya
+    chat: Satakieli families
+    kid: Otto
+    metadata: {from_me: false, digest: true}
+    body: Hi all! Does anyone know if the daycare is collecting old magazines for the craft week?
+  - source: whatsapp
+    id: demo-wa-sk-2
+    day: -2
+    time: "21:18"
+    sender: Tomas
+    chat: Satakieli families
+    kid: Otto
+    metadata: {from_me: false, digest: true}
+    body: Yes, until {en:+3w}. There's a box by the door of the Siilit group.
+  - source: whatsapp
+    id: demo-wa-sk-3
+    day: 0
+    time: "08:47"
+    sender: Priya
+    chat: Satakieli families
+    kid: Otto
+    metadata: {from_me: false, digest: true}
+    body: Thanks! We're also planning a playground meetup at Satakieli park this weekend, everyone welcome.
+
+  # ── eVaka: Otto's daycare
+  - source: evaka
+    id: demo-evaka-1
+    day: -1w
+    time: "12:15"
+    sender: Päiväkoti Satakieli, Siilit
+    subject: Metsäretki ja varavaatteet
+    kid: Otto
+    body: |
+      Hyvät Siilien perheet,
+      lähdemme metsäretkelle {+2w} aamupäivällä. Pukekaa lapselle säänmukaiset ulkovaatteet ja kumisaappaat.
+      Tarkistakaa myös, että lokerossa on varavaatteet: sukat, housut ja paita.
+      Terveisin, Siilien tiimi
+
+# The events the Sources give as events: Wilma's exams, MyClub's practices, Eepos's lessons and
+# eVaka's daycare calendar.
+events:
+  - source: wilma
+    id: demo-wilma-exam-event
+    title: "Koe: Matematiikka"
+    day: 2w
+    all_day: true
+    kid: Ella
+    description: Kertotaulut 2–5 ja kellonajat
+  - source: myclub
+    id: demo-myclub-practice
+    title: Salibandyharjoitukset
+    day: 1w
+    time: "17:30"
+    end: "18:45"
+    kid: Ella
+    location: Kuusikallion liikuntahalli
+    description: Mukaan sisäpelikengät, juomapullo ja maila.
+  - source: eepos
+    id: demo-eepos-lesson
+    title: Pianotunti
+    day: 2w
+    time: "15:15"
+    end: "15:45"
+    kid: Ella
+    location: Musiikkiopisto Sointu, luokka 4
+    description: Opettaja Elina Rantanen
+  - source: evaka
+    id: demo-evaka-event
+    title: Satakielen perhekahvit
+    day: 3w
+    time: "07:30"
+    end: "09:00"
+    kid: Otto
+    location: Päiväkoti Satakieli
+    description: Tervetuloa aamukahville lapsen kanssa!

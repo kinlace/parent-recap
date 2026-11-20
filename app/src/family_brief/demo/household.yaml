@@ -1,0 +1,31 @@
+# The demo Brief's Household (#1029): a made-up family in Tampere. Every name, school, club,
+# daycare and address here and in week.yaml is invented. `parent-recap demo` reads this as the
+# Household's config, adds the address and language it was given and the AI this computer
+# already uses, and keeps its state and archive in a folder of its own that it deletes after.
+timezone: Europe/Helsinki
+city: Tampere
+kids:
+  - name: Ella Korpela
+    everyday_name: Ella
+    grade: 2
+    class_name: 2B
+    school: Kuusikallion koulu
+    activities: [salibandy, piano]
+  - name: Otto Korpela
+    everyday_name: Otto
+    school: Päiväkoti Satakieli
+whatsapp:
+  enabled: true
+  chats:
+    - name: 2B vanhemmat
+      kid: Ella
+      label: class
+      digest: true
+    - name: Satakieli families
+      kid: Otto
+      label: daycare
+      digest: true
+google_calendar:
+  mode: ics
+  # So the MyClub practice is attached too, as it is for a family that asked for it.
+  ics_include_myclub: true

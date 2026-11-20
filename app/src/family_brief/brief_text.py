@@ -86,6 +86,8 @@ class BriefText:
     slept: str
     # At the top of a Brief that catches up an evening the computer was off at (#894)
     caught_up: str
+    # At the top of a demo Brief, made from the made-up Household's messages (#1029)
+    demo: str
     # At the top of the first Brief after the evening's update (ADR 0047, #916)
     updated: str                        # {version} it now runs, {link} to what changed in it
     updates_itself: str                 # after the first `updated` line a Household gets
@@ -213,6 +215,8 @@ EN = BriefText(
     slept="💤 Your computer went to sleep while making this Brief, so it was finished when you opened it.",
     caught_up="💤 Your computer was off at the last Brief time, so this Brief was sent when it came back on. "
               "It covers everything since then.",
+    demo="🧪 This is a demo Brief. Parent Recap made it from a made-up family's messages: every name, "
+         "school and message in it is invented.",
     updated="🔄 Parent Recap updated itself to version {version}. What changed: {link}",
     updates_itself="Parent Recap now installs each new release by itself after the evening Brief. To turn "
                    "this off, open Parent Recap Settings.",
@@ -311,6 +315,7 @@ ZH = BriefText(
     reply_incomplete="⚠️ 今晚 {assistant} 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/ParentRecap 归档里。",
     slept="💤 生成这份日报时电脑进入了睡眠，所以它是你打开电脑后才完成的。",
     caught_up="💤 上次日报时间电脑没开，所以这份是开机后补发的，包含从那以后的消息。",
+    demo="🧪 这是一份演示日报。Parent Recap 用一个虚构家庭的消息写成：里面的人名、学校和消息都是编的。",
     updated="🔄 Parent Recap 已自动更新到 {version} 版。更新内容：{link}",
     updates_itself="Parent Recap 现在会在晚间日报发出后自动安装每个新版本。要关掉的话，打开 Parent Recap Settings。",
     update_failed="🔄 Parent Recap 更新到 {version} 版没有成功，所以它仍然运行原来的 {running} 版。你不需要做任何事。",
@@ -399,6 +404,8 @@ FI = BriefText(
     slept="💤 Tietokone meni lepotilaan tämän koosteen tekemisen aikana, joten kooste valmistui vasta, kun avasit sen.",
     caught_up="💤 Tietokone ei ollut päällä edellisen koosteen aikaan, joten tämä kooste lähetettiin, kun se "
               "taas käynnistyi. Siinä on kaikki sen jälkeen tullut.",
+    demo="🧪 Tämä on esittelykooste. Parent Recap teki sen keksityn perheen viesteistä: kaikki sen nimet, "
+         "koulut ja viestit ovat keksittyjä.",
     updated="🔄 Parent Recap päivitti itsensä versioon {version}. Mitä muuttui: {link}",
     updates_itself="Parent Recap asentaa nyt jokaisen uuden version itse iltakoosteen jälkeen. Sen voi kytkeä "
                    "pois Parent Recap Settingsistä.",
