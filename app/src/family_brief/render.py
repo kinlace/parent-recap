@@ -393,13 +393,15 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
 
 
 def _top_note(incomplete: bool, t: BriefText, assistant: str, translation_note: str = "",
-              slept: bool = False, caught_up: bool = False, update: BriefNote | None = None) -> str:
-    """The notes at the top of the Brief: it catches up an evening the computer was off at; the
-    evening's update installed a new version or failed (#916); the computer slept during the run,
-    so it came late; its translation failed; or the model's reply was cut off."""
+              slept: bool = False, caught_up: bool = False, update: BriefNote | None = None,
+              demo: bool = False) -> str:
+    """The notes at the top of the Brief: it's a demo, made from a made-up Household's week
+    (#1029); it catches up an evening the computer was off at; the evening's update installed a
+    new version or failed (#916); the computer slept during the run, so it came late; its
+    translation failed; or the model's reply was cut off."""
     cut_off = t.reply_incomplete.format(assistant=assistant) if incomplete else ""
-    notes = (t.caught_up if caught_up else "", _update_note(update, t), t.slept if slept else "",
-             translation_note, cut_off)
+    notes = (t.demo if demo else "", t.caught_up if caught_up else "", _update_note(update, t),
+             t.slept if slept else "", translation_note, cut_off)
     return "\n".join(note for note in notes if note)
 
 
@@ -495,6 +497,8 @@ class Night:
     # What the evening's update did since the last Brief, on the family's own Mac (#916). Nor does
     # this alone make a quiet night's Brief worth sending: the next Brief sent says it.
     update: BriefNote | None = None
+    # A demo's Brief, made from a made-up Household's week (#1029), which it says at its top.
+    demo: bool = False
 
     @property
     def subject(self) -> str:
@@ -506,7 +510,7 @@ class Night:
                            _coverage_note(self.coverage, self.t, self.hosted),
                            _calendar_note(self.calendar_problem, bool(self.ics_events), self.t, self.assistant),
                            _top_note(self.incomplete, self.t, self.assistant, slept=self.slept,
-                                     caught_up=self.caught_up, update=self.update),
+                                     caught_up=self.caught_up, update=self.update, demo=self.demo),
                            self.held_back, self.assistant)
 
 
@@ -594,7 +598,7 @@ def mail(night: Night, v: Version) -> Mail:
     coverage_note = _coverage_note(night.coverage, t, night.hosted)
     calendar_note = _calendar_note(night.calendar_problem, bool(night.ics_events), t, assistant)
     top_note = _top_note(night.incomplete, t, assistant, v.translation_note, night.slept,
-                         night.caught_up, night.update)
+                         night.caught_up, night.update, night.demo)
     attachments = [(f"parent-recap-{night.date}.ics",
                     ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
                     "text/calendar")] if night.ics_events else []
@@ -634,7 +638,8 @@ def preview(night: Night) -> dict[str, str | None]:
                              coverage=_coverage_note(night.coverage, t, night.hosted),
                              footer=t.written_by.format(assistant=assistant) if night.model_wrote else "",
                              top_note=_top_note(night.incomplete, t, assistant, slept=night.slept,
-                                                caught_up=night.caught_up, update=night.update),
+                                                caught_up=night.caught_up, update=night.update,
+                                                demo=night.demo),
                              held_back=night.held_back,
                              assistant=assistant, end_html=end.html())
     return {"subject": night.subject, "text": _with_note(night.text(), end.text()), "html": html}

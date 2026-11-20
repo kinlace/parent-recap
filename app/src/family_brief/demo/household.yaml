@@ -1,0 +1,45 @@
+# The demo's Household (#1029): a family in Tampere, made up from start to finish. The Kids, the
+# teachers, the other parents, the school, the daycare, the club and the music school are all
+# invented, and so are the addresses. `parent-recap demo` reads it as a config, adds the address
+# and the language the demo is sent in, and never reads the Household's own config but for its AI.
+#
+# week.yaml holds what this Household's Sources say during one week.
+
+timezone: Europe/Helsinki
+city: Tampere
+
+kids:
+  - name: Ella Korhonen
+    everyday_name: Ella
+    grade: 2
+    class_name: 2B
+    school: Kivikummun koulu
+    activities: [jalkapallo, piano]
+    # Never read: the demo's MyClub practice is in week.yaml.
+    myclub_ical_url: https://demo.myclub.example/ical/ella.ics
+  - name: Onni Korhonen
+    everyday_name: Onni
+    class_name: Myyrät
+    school: Päiväkoti Puolukkapolku
+
+gmail:
+  allowlist_domains: [kivikumpu.example]
+
+wilma:
+  enabled: true
+
+whatsapp:
+  enabled: true
+  chats:
+    - name: 2B vanhemmat
+      kid: Ella
+      label: class
+      digest: true
+    - name: Myyrien vanhemmat
+      kid: Onni
+      label: daycare
+
+google_calendar:
+  mode: ics
+  # So the club practice is among the new events too.
+  ics_include_myclub: true

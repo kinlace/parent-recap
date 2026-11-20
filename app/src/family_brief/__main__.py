@@ -149,7 +149,8 @@ def main() -> int:
     pwe.add_argument("--dry-run", action="store_true")
     pwe.set_defaults(func=cmd_weekend_events)
 
-    from . import ai_filter_report, ops, setup_steps, signup, uninstall, update, versions
+    from . import ai_filter_report, demo, ops, setup_steps, signup, uninstall, update, versions
+    demo.register(sub)
     ops.register(sub)
     setup_steps.register(sub)
     uninstall.register(sub)

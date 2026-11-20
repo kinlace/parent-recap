@@ -86,6 +86,8 @@ class BriefText:
     slept: str
     # At the top of a Brief that catches up an evening the computer was off at (#894)
     caught_up: str
+    # At the top of a demo's Brief, made from a made-up Household's week (#1029)
+    demo: str
     # At the top of the first Brief after the evening's update (ADR 0047, #916)
     updated: str                        # {version} it now runs, {link} to what changed in it
     updates_itself: str                 # after the first `updated` line a Household gets
@@ -211,6 +213,8 @@ EN = BriefText(
     reply_incomplete="⚠️ {assistant}'s reply tonight was cut off, so this Brief may be missing some items. "
                      "All of tonight's messages are in the archive in ~/ParentRecap.",
     slept="💤 Your computer went to sleep while making this Brief, so it was finished when you opened it.",
+    demo="🧪 This is a demo. Parent Recap made this Brief just now from a week of messages of a made-up "
+         "family. Its names, schools and messages aren't real.",
     caught_up="💤 Your computer was off at the last Brief time, so this Brief was sent when it came back on. "
               "It covers everything since then.",
     updated="🔄 Parent Recap updated itself to version {version}. What changed: {link}",
@@ -310,6 +314,7 @@ ZH = BriefText(
     fallback_more="  …另外 {n} 条，见归档",
     reply_incomplete="⚠️ 今晚 {assistant} 的回复不完整，这份日报可能漏了几条。今晚的原始消息都在 ~/ParentRecap 归档里。",
     slept="💤 生成这份日报时电脑进入了睡眠，所以它是你打开电脑后才完成的。",
+    demo="🧪 这是一份演示日报：Parent Recap 刚刚用一个虚构家庭一周的消息做了它。里面的人名、学校和消息都不是真的。",
     caught_up="💤 上次日报时间电脑没开，所以这份是开机后补发的，包含从那以后的消息。",
     updated="🔄 Parent Recap 已自动更新到 {version} 版。更新内容：{link}",
     updates_itself="Parent Recap 现在会在晚间日报发出后自动安装每个新版本。要关掉的话，打开 Parent Recap Settings。",
@@ -397,6 +402,8 @@ FI = BriefText(
     reply_incomplete="⚠️ {assistant}-avustajan vastaus jäi tänä iltana kesken, joten koosteesta voi puuttua "
                      "joitakin kohtia. Kaikki tämäniltaiset viestit ovat tallessa arkistossa ~/ParentRecap.",
     slept="💤 Tietokone meni lepotilaan tämän koosteen tekemisen aikana, joten kooste valmistui vasta, kun avasit sen.",
+    demo="🧪 Tämä on esittelykooste. Parent Recap teki sen juuri nyt keksityn perheen viikon viesteistä. "
+         "Sen nimet, koulut ja viestit eivät ole oikeita.",
     caught_up="💤 Tietokone ei ollut päällä edellisen koosteen aikaan, joten tämä kooste lähetettiin, kun se "
               "taas käynnistyi. Siinä on kaikki sen jälkeen tullut.",
     updated="🔄 Parent Recap päivitti itsensä versioon {version}. Mitä muuttui: {link}",

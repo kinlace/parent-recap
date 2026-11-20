@@ -73,6 +73,14 @@ When something is wrong and you want the maintainers' help, Parent Recap Check c
 - **How it is sent:** from inside the program, over HTTPS to `/v1/problem` on the gateway address the Brief goes to, with your Gateway Key, or without one, as after an install that didn't finish, under the Run Report's random id (`~/.family/run-reports/id`) or a new random id when there is no config yet. No shell, PowerShell or `curl` runs.
 - **What the gateway keeps:** each report as it came, with when it came and under which key or id, for 30 days, then it is deleted. It takes at most 64 KB a report and a few a day from one key or one caller, and refuses the rest. Its log says only that a report came, from which key or id and how large it was, never what it says. The maintainers read it on the server and don't paste it elsewhere ([ops/gateway/README.md](ops/gateway/README.md#problem-reports)).
 
+### The demo
+
+`parent-recap demo --to <address> --language <en|fi|zh>` (#1029) makes one Brief from a made-up Household's week, the plain files in `app/src/family_brief/demo/`, and sends it to the one address given. It goes through the evening run's own steps: the AI filter holds the sensitive message back and puts placeholders in the rest, the model writes the Brief, and its new events go with it as an `.ics`.
+
+- **What leaves the computer:** only the model call, through the Household's AI (before setup, the Claude Code or Codex the computer has, or the gateway with a stored Gateway Key), with the made-up messages; and the Brief, posted to the gateway's relay with the stored Gateway Key, as in [Delivering](#delivering). Never through your Gmail. The demo never asks the gateway for a key and never binds an address to yours, so the relay sends it only to an address your key may send to: one of your confirmed Recipients for a send-only key (ADR 0033), any address for a key from the maintainers. Otherwise, or with no key, nothing is sent: the Brief is saved as a page in a new temporary folder and opened in the browser.
+- **What it reads:** your config, if there is one, only for which AI to use; from the Keychain or Credential Manager only the Gateway Key, and your AI's own sign-in as every model call does. No Source is read or signed in to, and none of their passwords is read.
+- **What it writes:** nothing of yours: not the config, the state, the archive, `last-run.json` or a Run Report, and no Problem Report is sent. What it would keep goes to a temporary folder it removes. When the Claude or Codex command fails, its output is saved under `~/ParentRecap/logs/` as for any model call.
+
 ### What stays on the Mac
 
 - `~/.family/config.yaml`: your configuration, including Kids' names, allowlisted senders, chosen WhatsApp chats and MyClub links. Setup creates it owner-only (`chmod 600`), inside `~/.family`, which the installer makes owner-only (`chmod 700`).

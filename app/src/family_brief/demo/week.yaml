@@ -1,0 +1,213 @@
+# One week of the demo's Household (household.yaml), as its Sources would give it to the evening
+# run: Wilma, the school's email, two WhatsApp groups, MyClub, eVaka and Eepos. Everything here is
+# made up. `parent-recap demo` reads it the evening it runs, so its dates move with that evening:
+#
+#   day: the school day the message came, or the event is on, counted from the evening of the
+#        demo, which is day 0: -1 is the school day before, 2 the second school day after. A
+#        weekend is skipped, so school is never on a Saturday.
+#   time: when, in Finnish time. A message of day 0 later than the demo runs is moved to just
+#        before it.
+#   In a message's text, {date+N} is day N's date as Finns write it (24.11.), {weekday+N} its
+#   weekday in Finnish (tiistai), {iso+N} as 2026-11-24, {dow+N} as Tue, and {in+N} how far ahead
+#   it is, as Wilma's exams say it (tomorrow, in 3 days).
+#
+# A WhatsApp message's Kid and whether its group is summed up come from household.yaml, as the
+# Source takes them from the config. The email from the special education teacher looks
+# sensitive, so the AI never sees it and the Brief lists it by itself (ADR 0013).
+
+messages:
+  # ── Wilma
+  - source: wilma
+    id: "message:4101"
+    day: -3
+    time: "13:20"
+    sender: Lehtonen Sanna
+    subject: Metsäretki
+    kid: Ella
+    metadata: {wilma_kind: message, addressee_count: 24}
+    body: |
+      Hei 2B:n huoltajat!
+      Lähdemme {weekday+4}na {date+4} metsäretkelle Kivikummun luontopolulle. Lähdemme koululta klo 9.00 ja
+      palaamme ennen klo 13.00. Mukaan eväät, juomapullo ja säänmukaiset vaatteet.
+      Täyttäkää retkilupa Wilman lomakkeella viimeistään {date+2}.
+      Terveisin Sanna Lehtonen
+
+  - source: wilma
+    id: "message:4102"
+    day: -1
+    time: "15:05"
+    sender: Lehtonen Sanna
+    subject: Lyhennetty koulupäivä
+    kid: Ella
+    metadata: {wilma_kind: message, addressee_count: 24}
+    body: |
+      Hei! Opettajien koulutuksen vuoksi koulupäivä päättyy {weekday+1}na {date+1} jo klo 12.00.
+      Iltapäiväkerho toimii tavalliseen tapaan klo 17 asti.
+
+  - source: wilma
+    id: "message:4103"
+    day: 0
+    time: "10:40"
+    sender: Lehtonen Sanna
+    subject: Vanhempainvartti
+    kid: Ella
+    metadata: {wilma_kind: message, addressee_count: 2}
+    body: |
+      Hei Ellan vanhemmat!
+      Pidän vanhempainvartit ensi viikolla. Sopisiko teille {weekday+5} {date+5} klo 16.00 vai
+      {weekday+6} {date+6} klo 17.30? Vartin voi pitää koululla tai puhelimessa.
+      Vastatkaa tähän viestiin viimeistään {date+2}, niin vahvistan ajan.
+      Sanna
+
+  - source: wilma
+    id: "exam:demo-yo-1"
+    day: 0
+    time: "06:00"
+    subject: "Exam: Ympäristöoppi – Vesi ja sää"
+    chat: exams
+    kid: Ella
+    metadata: {wilma_kind: exam, exam_date: "{iso+3}", calendar_event: "exam:demo-yo-1"}
+    body: |
+      [{iso+3} {dow+3} · {in+3}]
+      Subject: Ympäristöoppi
+      Exam: Vesi ja sää
+      What to study: Kirjan sivut 34–41 ja vihon tehtävät
+      Teacher: Lehtonen Sanna
+
+  # ── The school's email
+  - source: gmail
+    id: "9101"
+    day: -2
+    time: "08:30"
+    sender: Kivikummun koulu <kanslia@kivikumpu.example>
+    subject: Luokkakuvaus {date+5}
+    metadata: {mailing_list: true}
+    body: |
+      Hyvät huoltajat,
+      Kivikummun koulun luokka- ja yksilökuvat otetaan {weekday+5}na {date+5} aamupäivällä.
+      Kuvat voi tilata kuvaamon verkkokaupasta kuvauksen jälkeen. Tilaaminen on vapaaehtoista.
+      Ystävällisin terveisin
+      Kivikummun koulun kanslia
+
+  - source: gmail
+    id: "9102"
+    day: -1
+    time: "16:45"
+    sender: Mikko Saarinen <mikko.saarinen@kivikumpu.example>
+    subject: Ellan lukemisen tuki
+    body: |
+      Hei,
+      olen erityisopettaja Kivikummun koulussa. Ehdotan, että Ellalle aloitetaan tehostettu tuki
+      lukemisessa ja teemme ensin pedagogisen arvion yhdessä luokanopettajan kanssa.
+      Voisimmeko sopia tapaamisen ensi viikolle?
+      Mikko Saarinen
+
+  # ── WhatsApp: Ella's class
+  - source: whatsapp
+    id: "1:7001"
+    day: -2
+    time: "19:12"
+    sender: Tiina
+    chat: 2B vanhemmat
+    body: Onko kenellekään tarttunut mukaan sininen tähtipipo? Aadan pipo jäi eilen koulun naulakkoon.
+
+  - source: whatsapp
+    id: "1:7002"
+    day: -2
+    time: "19:40"
+    sender: Petri
+    chat: 2B vanhemmat
+    body: Meillä on ylimääräinen samanlainen, voin tuoda huomenna löytötavaralaatikkoon jos ei löydy 🙂
+
+  - source: whatsapp
+    id: "1:7003"
+    day: -1
+    time: "20:03"
+    sender: Laura (luokkatoimikunta)
+    chat: 2B vanhemmat
+    body: |
+      Muistutus metsäretkeen: opettaja pyysi, että jokaisella on heijastinliivi mukana, koska
+      kävelemme osan matkasta tien vartta.
+
+  - source: whatsapp
+    id: "1:7004"
+    day: 0
+    time: "18:30"
+    sender: Laura (luokkatoimikunta)
+    chat: 2B vanhemmat
+    body: |
+      Luokkatoimikunta ehdottaa yhteistä luokkaretkeä keilaamaan ennen joulua. Kirjoittakaa
+      ketjuun, sopisiko lauantai vai sunnuntai paremmin. Hinta noin 8 € / lapsi.
+
+  - source: whatsapp
+    id: "1:7005"
+    day: 0
+    time: "19:05"
+    sender: Jenni
+    chat: 2B vanhemmat
+    body: Lauantai sopisi meille! Ja kiitos Laura kun järjestät 🙏
+
+  # ── WhatsApp: Onni's daycare group
+  - source: whatsapp
+    id: "2:8001"
+    day: -1
+    time: "17:40"
+    sender: Sari
+    chat: Myyrien vanhemmat
+    body: |
+      Päiväkodin pihalla on lelujen vaihtopäivä {weekday+3}na klo 16–17. Jokainen saa tuoda
+      pari pientä lelua vaihtoon, ja ylimääräiset menevät kierrätykseen.
+
+  # ── eVaka: Onni's daycare
+  - source: evaka
+    id: "demo-evaka-5001"
+    day: -1
+    time: "12:10"
+    sender: Päiväkoti Puolukkapolku – Myyrät
+    subject: Metsäpäivä ja varavaatteet
+    chat: bulletin
+    kid: Onni
+    metadata: {evaka_city: tampere, sender_type: GROUP, addressee_count: 18}
+    body: |
+      Hei Myyrien perheet!
+      Vietämme metsäpäivää {weekday+2}na {date+2}. Lapsilla on hyvä olla kumisaappaat ja
+      kurahousut, ja aamupala syödään jo klo 8.00, joten tulettehan ajoissa.
+      Täydentäkää myös lasten varavaatelokerot: villasukat ja kerrasto ovat loppumassa monelta.
+      Terveisin Myyrien tiimi
+
+events:
+  - source: wilma
+    id: "exam:demo-yo-1"
+    title: "Koe: Ympäristöoppi – Vesi ja sää"
+    day: 3
+    all_day: true
+    kid: Ella
+    description: Kirjan sivut 34–41 ja vihon tehtävät
+
+  - source: myclub
+    id: "demo-myclub-301"
+    title: "⚽ FC Kivikumpu P2018: harjoitukset"
+    day: 2
+    time: "17:30"
+    end: "18:45"
+    location: Kivikummun tekonurmi
+    description: MyClub
+    kid: Ella
+
+  - source: eepos
+    id: "demo-eepos-77"
+    title: Pianotunti
+    day: 1
+    time: "16:15"
+    end: "16:45"
+    location: Kivikummun musiikkikoulu, luokka 3
+    kid: Ella
+
+  - source: evaka
+    id: "demo-evaka-e-12"
+    title: Myyrien vanhempainilta
+    day: 7
+    time: "18:00"
+    end: "19:30"
+    location: Päiväkoti Puolukkapolku, Myyrien ryhmätila
+    kid: Onni
