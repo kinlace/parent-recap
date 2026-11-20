@@ -50,6 +50,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_wilma_pin.py`           | The committed npm files pin the wilma CLI and its tree (#975)    |
 | `test_brief.py`               | The Brief read from the archive and written back; old archives   || `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
 | `test_citations.py`           | The model's citations checked against what the program supplied  |
+| `test_demo_week.py`           | The demo's made-up Household and its week, dated from an evening (#1029) |
 | `test_eepos.py`               | Eepos: a school's address, a student as a Kid, entries as events |
 | `test_evaka.py`               | eVaka: a city and its host, a child as a Kid, events, closed days, the deadline |
 | `test_socialschools.py`       | Social Schools: a post's HTML as text, its times, whole days, a child and a post as a Kid's |
@@ -154,6 +155,12 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_without_google_packages.py` | Everything but google mode runs without Google's packages                               |
 
 The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights.py`.
+
+## End-to-end tests: the demo
+
+| File           | What it covers                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------- |
+| `test_demo.py` | `parent-recap demo` (#1029): the made-up Household's Brief sent, no Source read, nothing written |
 
 ## End-to-end tests: setup, doctor and uninstall
 

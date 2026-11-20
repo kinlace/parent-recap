@@ -84,6 +84,10 @@ irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | 
 
 如果日报时间电脑关着、睡着或没有登录，错过的日报会在电脑重新开起来后补发，前提是离日报时间不到 10 小时（21:00 的日报，最晚到第二天早上 07:00）。它会在开头说明是补发的，并包含从上一份日报以来的所有消息。超过 10 小时就不再补发：第二天晚上的日报会把错过的那天也包括进去，这样你不会在一小时内收到两份日报。你自己手动开始的日报总会运行。
 
+### 还没连接任何账户，能先看看日报长什么样吗？
+
+可以。装好 Parent Recap 后，哪怕设置还没做完，在终端或 PowerShell 里输入 `parent-recap demo --to you@example.com --language zh`（`en` 是英文，`fi` 是芬兰语），或者在对话里说想看一份演示日报。Parent Recap 会用一个虚构家庭一周的消息做一份日报，发到这个地址，开头会写明这是演示。它不读你的任何账户，也不改动电脑上的任何东西：离开电脑的只有对 AI 的调用（你的 Claude 或 ChatGPT，或用维护者给的密钥走网关）和这封邮件，邮件用你的网关密钥经网关发出。网关只发给这把密钥允许的地址，所以没有密钥或发往别的地址时，日报会改为在浏览器里打开。详情见 [SECURITY.md](SECURITY.md#the-demo)。
+
 ## 致谢
 
 Parent Recap 通过 Antti Karjalainen 的 [wilma CLI](https://github.com/aikarjal/wilmai)（WilmAI）读取 Wilma，它免费开源，采用 MIT 许可。没有它，摘要里就没有 Wilma 的内容。

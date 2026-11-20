@@ -39,7 +39,8 @@ log = logging.getLogger("family_brief")
 class Options:
     """How `parent-recap run` was asked to run. A preview is a dry run that prints, for the setup
     page, how far it is and then the first Recipient's email. A first Brief, the hosted sign-up's,
-    is made even on a quiet night, as a preview is, and sent to every Recipient."""
+    is made even on a quiet night, as a preview is, and sent to every Recipient. A demo's Brief is
+    made from a made-up Household's week (send_demo, #1029) and says so at its top."""
     dry_run: bool = False
     preview: bool = False
     first: bool = False
@@ -49,6 +50,7 @@ class Options:
     # Started by the system's scheduler (jobs.SCHEDULED), not by hand: a start well after the
     # Brief's time catches up a missed evening, and only within CATCH_UP_LIMIT (#894).
     scheduled: bool = False
+    demo: bool = False
 
 
 @dataclass(frozen=True)
@@ -490,16 +492,19 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         # The rule-based fallback is a raw message list the model never wrote, and a night with only
         # Source events listed before or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=asks_model and notes.error is None,
-        stamp=datetime.now(timezone.utc), incomplete=notes.incomplete, write_to=email_action.write_to(cfg),
-        hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_what_the_update_did(cfg, options))
+        stamp=datetime.now(timezone.utc), incomplete=notes.incomplete,
+        # A demo's one Recipient is no Household's, so there is no one to write to instead.
+        write_to=None if options.demo else email_action.write_to(cfg),
+        hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_what_the_update_did(cfg, options),
+        demo=options.demo)
     return _Written(night, notes, for_ai, held, model_events, placeholders, asks_model)
 
 
 def _update_folder(cfg: Config, options: Options) -> Path | None:
     """Parent Recap's folder where tonight's Brief says what the evening's update did (#916): only
     on a family's own Mac or PC, where the program updates itself (ADR 0047, ADR 0052), and not
-    in the setup page's Brief."""
-    if cfg.hosted or options.preview or options.first or \
+    in the setup page's Brief or a demo's."""
+    if cfg.hosted or options.preview or options.first or options.demo or \
             profile.current().system not in ("macos", "windows"):
         return None
     from . import own_node
@@ -770,6 +775,33 @@ def _run(cfg: Config, options: Options, io: IO, caught_up: bool,
     log.info("Archive written to %s", md_path)
     # A first Brief a Recipient didn't get fails, so the sign-up isn't said to have sent it.
     return _Ended(1 if options.first and not everyone else 0, "sent" if delivered else None)
+
+
+@dataclass(frozen=True)
+class DemoSent:
+    """How a demo's Brief went: whether it reached its Recipient, or the error the model's call
+    ended on, when the model couldn't write it and nothing was sent."""
+    delivered: bool
+    error: str | None = None
+
+
+def send_demo(cfg: Config, io: IO, messages: list[Message], events: list[CalendarEvent],
+              coverage: dict[str, dict], started: datetime) -> DemoSent:
+    """A demo's Brief (#1029): `messages` and `events`, a made-up Household's in `cfg`, read as
+    the Sources would have given them (`coverage`), go through the evening run's own steps from
+    there, the AI filter, the model, the calendar's .ics and sending, through `io`. Nothing is
+    read from a Source, and no state is saved, archive written or Run Report made. A Brief the
+    model couldn't write isn't sent: its rule-based list is of no use to show."""
+    state = io.load_state(cfg.resolved_state_path())
+    events = [e.in_zone(cfg.timezone) for e in events]
+    tomorrow = started.date() + timedelta(days=1)
+    read = _Read(started, messages, events, coverage, earlier=[], due_soon=False,
+                 event_tomorrow=any(e.start.date() == tomorrow for e in events))
+    written = _write(cfg, Options(demo=True), io, state, read, True, slept.Watch(), caught_up=False)
+    if written.notes.error is not None:
+        return DemoSent(False, written.notes.error)
+    _email_sent, delivered, _everyone = _deliver(cfg, io, state, written)
+    return DemoSent(delivered)
 
 
 # A start by the scheduler this long before the Brief's time still counts as at it: a clock set

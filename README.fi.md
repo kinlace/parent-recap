@@ -84,6 +84,10 @@ Tietokone herää koostetta varten, mutta suljettu kannettava voi etenkin akulla
 
 Jos tietokone oli koosteen aikaan sammutettu, lepotilassa tai kukaan ei ollut kirjautuneena, väliin jäänyt kooste lähetetään, kun tietokone on taas päällä, kunhan koosteen ajasta on alle 10 tuntia (klo 21:n koosteelle seuraavaan aamuun klo 7:ään asti). Sen alussa kerrotaan, että se lähetettiin myöhässä, ja siinä on kaikki edellisen koosteen jälkeen tullut. Myöhemmin sitä ei enää lähetetä: seuraavan illan kooste kattaa myös väliin jääneen illan, joten et saa kahta koostetta tunnin välein. Itse käynnistämäsi kooste tehdään aina.
 
+### Voinko nähdä koosteen ennen kuin yhdistän mitään?
+
+Kyllä. Kun Parent Recap on asennettu, jo ennen kuin käyttöönotto on valmis, kirjoita Terminaaliin tai PowerShelliin `parent-recap demo --to sina@example.com --language fi` (`en` englanniksi, `zh` kiinaksi) tai pyydä keskustelussa esittelykoostetta. Parent Recap tekee yhden koosteen keksityn perheen viikon viesteistä ja lähettää sen tuohon osoitteeseen. Sen alussa kerrotaan, että se on esittely. Se ei lue yhtään tiliäsi eikä muuta tietokoneellasi mitään: koneelta lähtevät vain kutsu tekoälyllesi (Claude tai ChatGPT, tai ylläpitäjien yhdyskäytävä heiltä saadulla avaimella) ja sähköposti, joka lähtee yhdyskäytävän kautta gateway-avaimellasi. Yhdyskäytävä lähettää vain osoitteisiin, joihin avain saa lähettää, joten ilman avainta tai muuhun osoitteeseen kooste avautuu sen sijaan selaimessa. Lisätietoja on [SECURITY.md](SECURITY.md#the-demo)-tiedostossa.
+
 ## Kiitokset
 
 Parent Recap lukee Wilmaa Antti Karjalaisen [wilma CLI:n](https://github.com/aikarjal/wilmai) (WilmAI) avulla. Se on ilmaista ja avointa lähdekoodia MIT-lisenssillä. Ilman sitä koosteessa ei olisi Wilmaa.
