@@ -9,10 +9,10 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TypeVar
 
 from .. import slept
+from .parse import diagnostics_dir
 
 log = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ def with_retry(call: Callable[[], _R], busy_reason: Callable[[_R], str | None], 
 
 
 def save_diagnostics(name: str, proc: subprocess.CompletedProcess, cmd_desc: str) -> None:
-    dbg = Path.home() / "ParentRecap" / "logs" / name
+    dbg = diagnostics_dir() / name
     dbg.parent.mkdir(parents=True, exist_ok=True)
     dbg.write_text(
         f"returncode: {proc.returncode}\n"

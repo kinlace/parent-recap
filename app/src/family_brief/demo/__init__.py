@@ -30,11 +30,12 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from .. import gateway, languages
+from .. import languages
 from .. import sources as registry
 from ..actions import email as email_action
 from ..collectors.base import CalendarEvent, Message
 from ..config import Config, LLMConfig
+from ..llm.parse import diagnostics_in
 
 log = logging.getLogger(__name__)
 
@@ -143,7 +144,8 @@ def _households_ai(config: str | None, backend: str | None) -> LLMConfig:
 def run(to: str, language: str, llm: LLMConfig) -> dict[str, str]:
     """Makes the demo's Brief and sends it to `to`: what happened, as the command prints it."""
     from .. import run as evening
-    with tempfile.TemporaryDirectory(prefix="parent-recap-demo-") as folder:
+    with tempfile.TemporaryDirectory(prefix="parent-recap-demo-") as folder, \
+            diagnostics_in(Path(folder) / "logs"):  # a failed model call's too
         cfg = household(to, language, llm, Path(folder))
         sample = week(datetime.now(ZoneInfo(cfg.timezone)))
         mail, error = evening.demo_mail(cfg, sample.messages, sample.events, sample.coverage())
@@ -151,7 +153,8 @@ def run(to: str, language: str, llm: LLMConfig) -> dict[str, str]:
         return {"demo": "failed", "why": f"the AI couldn't write the Brief: {error}"}
     try:
         email_action.gateway(cfg.llm.gateway_url, mail.subject, mail.text, mail.to, mail.html, mail.attachments)
-    except (gateway.GatewayError, gateway.NoKey) as e:
+    except Exception as e:  # noqa: BLE001 - whatever stopped it, the Brief is kept to open; a
+        # gateway error comes without the key (email.gateway)
         page = Path(tempfile.gettempdir()) / f"parent-recap-demo-{language}.html"
         page.write_text(mail.html, encoding="utf-8")
         return {"demo": "saved", "file": str(page),

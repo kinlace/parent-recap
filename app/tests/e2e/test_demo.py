@@ -189,6 +189,15 @@ def test_a_demo_the_model_couldnt_write_is_not_sent(harness, capsys):
     assert code == 1 and printed["demo"] == "failed"
     assert "signed in" in printed["why"]
     assert harness.sent == []
+    assert not (harness.home / "ParentRecap").exists()
+
+
+def test_a_reply_that_isnt_json_leaves_no_diagnostics_in_the_households_archive(harness, capsys):
+    harness.store_gateway_key()
+    harness.model_reply = "Sorry, I can't help with that."
+
+    assert demo(harness, capsys, "--to", FRIEND, "--language", "en")[1]["demo"] == "failed"
+    assert not (harness.home / "ParentRecap").exists()
 
 
 def test_the_demo_asks_for_an_address(harness, capsys):
