@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -58,8 +60,28 @@ def cli_response(stdout: str) -> tuple[dict[str, Any], bool]:
     return model_json(result)
 
 
+# Where a failed model call leaves what it got, to be looked into: the family's logs, or while the
+# demo runs, its own folder (#1029), so a demo never writes into the Household's archive.
+_diagnostics: Path | None = None
+
+
+def diagnostics_dir() -> Path:
+    return _diagnostics or Path.home() / "ParentRecap" / "logs"
+
+
+@contextmanager
+def diagnostics_in(folder: Path) -> Iterator[None]:
+    """Model call diagnostics go to `folder` inside the `with`."""
+    global _diagnostics
+    before, _diagnostics = _diagnostics, folder
+    try:
+        yield
+    finally:
+        _diagnostics = before
+
+
 def _save_unparsed(result: str, reason: object) -> None:
-    dbg = Path.home() / "ParentRecap" / "logs" / "summarize_failed.txt"
+    dbg = diagnostics_dir() / "summarize_failed.txt"
     dbg.parent.mkdir(parents=True, exist_ok=True)
     dbg.write_text(result, encoding="utf-8")
     log.error("JSON parse fully failed (%s). Raw saved to %s", reason, dbg)

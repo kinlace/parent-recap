@@ -48,7 +48,8 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_ai_filter.py`           | The AI filter on its own: messages in, masked text and names out |
 | `test_baileys_pin.py`         | The committed npm files pin Baileys and its tree, with hashes    |
 | `test_wilma_pin.py`           | The committed npm files pin the wilma CLI and its tree (#975)    |
-| `test_brief.py`               | The Brief read from the archive and written back; old archives   || `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
+| `test_brief.py`               | The Brief read from the archive and written back; old archives   |
+| `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
 | `test_citations.py`           | The model's citations checked against what the program supplied  |
 | `test_demo_week.py`           | The demo's made-up week: every Source, one held back, its days   |
 | `test_eepos.py`               | Eepos: a school's address, a student as a Kid, entries as events |
@@ -131,7 +132,8 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                                     |
 | `test_nightly_held_back.py`       | Held-back Messages, end to end (ADR 0013)                                               |
 | `test_nightly_new_source.py`      | A Source added only to the registry is read, counted, caught up                         |
-| `test_any_language.py`            | A Recipient in a language without reviewed program text (ADR 0004)                      || `test_busy_model.py`              | How long each model call may wait for a busy model                                      |
+| `test_any_language.py`            | A Recipient in a language without reviewed program text (ADR 0004)                      |
+| `test_busy_model.py`              | How long each model call may wait for a busy model                                      |
 | `test_gateway.py`                 | The gateway backend (ADR 0014): Brief, doctor and `setup gateway`                       |
 | `test_gateway_sends.py`           | Every Brief sent by the gateway (ADR 0032): refusals, doctor, Gmail-sent Households     |
 | `test_gmail_sends.py`             | The Brief from the Household's own Gmail (ADR 0034): run, doctor, `setup sending`, page |

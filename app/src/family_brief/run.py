@@ -492,8 +492,8 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
         # The rule-based fallback is a raw message list the model never wrote, and a night with only
         # Source events listed before or Held-back Messages asks no model: nothing to judge and no model to credit.
         model_wrote=asks_model and notes.error is None,
-        # The demo's Recipient set nothing up, so its Brief names nobody to write to.
         stamp=datetime.now(timezone.utc), incomplete=notes.incomplete,
+        # The demo's Recipient set nothing up, so its Brief names nobody to write to.
         write_to=None if options.demo else email_action.write_to(cfg),
         hosted=cfg.hosted, slept=asleep, caught_up=caught_up, update=_what_the_update_did(cfg, options),
         demo=options.demo)
