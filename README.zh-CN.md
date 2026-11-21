@@ -41,7 +41,7 @@ irm https://raw.githubusercontent.com/kinlace/parent-recap/stable/install.ps1 | 
 
 浏览器会打开一个设置页面，用芬兰语、英语或中文带你完成剩下的步骤。设置完成之前，请不要关掉终端或 PowerShell 窗口。
 
-每天晚上 9 点左右，这台电脑需要开着或在睡眠中，并且你保持登录。没有这样的电脑？维护者为少数受邀家庭托管运行 Parent Recap，只读 Wilma 和 MyClub。
+每天晚上 9 点左右，这台电脑需要开着或处于休眠，并且你保持登录。没有这样的电脑？维护者为少数受邀家庭托管运行 Parent Recap，只读 Wilma 和 MyClub。
 
 在 Mac 和 Windows 电脑上，Parent Recap 会自动更新：它会在晚间日报发出后读取 `stable` 分支上的 `release.json`，自己安装新版本，最早在第一次发现这个版本的一天之后。如果一个新版本没有改动你家用到的任何部分，比如只修了一个你没有连接的学校系统，就不会安装。要关掉自动更新，可以关掉 Parent Recap Settings 最后一步上的开关，或者在终端或 PowerShell 里输入 `parent-recap update off`；`parent-recap update on` 会重新打开。如果新版本有问题，`parent-recap switch-back` 会换回上一个版本。[更新](docs/install.md#updating)（英文）说明它怎么运作，[SECURITY.md](SECURITY.md#how-parent-recap-updates-itself)（英文）说明它下载什么、每样下载怎么校验。
 
