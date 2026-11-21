@@ -10,6 +10,7 @@ from ..brief_text import PRODUCT_NAME, BriefText
 from ..collectors.base import Message
 from ..config import Config
 from ..summarize import third_parties
+from ..week_ahead import NIGHTS_BACK, EarlierNight
 
 
 def write(cfg: Config, date_str: str, messages: list[Message], brief: Brief, notes: RunNotes,
@@ -96,6 +97,25 @@ def recent_points(cfg: Config, today: str, days: int = 3) -> list[EarlierBrief]:
         kids = [k for k in brief.kids if k.notices or k.action_items]
         if kids:
             out.append(EarlierBrief(day, kids, third_parties(cfg, data.get("messages") or [])))
+    return out
+
+
+def earlier_nights(cfg: Config, today: str, days: int = NIGHTS_BACK) -> list[EarlierNight]:
+    """The Briefs of the `days` evenings before `today` that reached the parents, each with the
+    people its Messages came from, for the Week Ahead (ADR 0053). A Brief never delivered is left
+    out, as recent_points leaves it out."""
+    base = date.fromisoformat(today)
+    out: list[EarlierNight] = []
+    for i in range(days, 0, -1):
+        day = (base - timedelta(days=i)).isoformat()
+        try:
+            data = json.loads((cfg.archive.resolved_dir() / f"{day}.raw.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or data.get("delivered") is False:
+            continue
+        brief, _ = from_archive(data.get("summary"))
+        out.append(EarlierNight(day, brief, third_parties(cfg, data.get("messages") or [])))
     return out
 
 

@@ -5,7 +5,9 @@ summary. A reply that doesn't carry the same Brief (the same Kids, Notices, Acti
 calendar events and number of group digests, with the same due dates, times and refs) counts as a
 failed translation. Only text is taken from it: the translation is a copy of the original with its
 Digest, Notices, Action Items, calendar event titles and descriptions and group digests' text
-replaced, so its Sources and group names are the original's too.
+replaced, so its Sources and group names are the original's too. On a Sunday the Week Ahead's
+model-written text goes along and comes back translated; a reply without it leaves the week as
+written (ADR 0053).
 While the AI filter is on, the model gets the Brief with the night's placeholders (ADR 0013) and
 the reply gets the real values back before it is checked. `per_language` fans the Brief and
 Weekend Picks out to each language's Recipients."""
@@ -15,11 +17,12 @@ import copy
 import logging
 from datetime import date, timedelta
 from string import Template
-from typing import Callable, TypeVar
+from typing import Any, Callable, TypeVar
 
 from . import ai_filter, citations, kid_placeholders, languages
 from .brief import Brief, Event, KidSection, for_translation, parse
 from .brief_text import BriefText, Language
+from .week_ahead import WeekItem
 from .languages import FINNISH_TERMS, is_finnish
 from .config import Config
 from .summarize import call_llm_filtered
@@ -35,6 +38,8 @@ _INTRO = Template("""You translate a Household's daily Brief about their kids' s
 
 You receive one JSON object: the Brief's Digest (message_digest), each kid's notices and action items, and the new calendar events.
 """)
+# Only on a Sunday whose Brief has a Week Ahead (ADR 0053), so every other night's prompt stays as it was.
+_WEEK = "It also has week_ahead: the coming week's action items and calendar events, each with its text and perhaps a description.\n"
 
 _TRANSLATE = Template("Translate every text value (message_digest, text, what, title, description) into $target")
 _KEEP = [
@@ -74,11 +79,12 @@ def instructions(intro: Template, translate: Template, keep_finnish: Template, k
 
 
 def system_prompt(src: BriefText, dst: BriefText, target: Language, tomorrow: date, masked: bool = False,
-                  kids_masked: bool = False) -> str:
+                  kids_masked: bool = False, week: bool = False) -> str:
     """The translation instructions, saying how to treat placeholders when the Brief is `masked`,
-    and the Kids' when `kids_masked`."""
+    and the Kids' when `kids_masked`, and what the Week Ahead is when the Brief has one (`week`)."""
     keep = [*_KEEP, _PLACEHOLDERS, *([_KID_PLACEHOLDERS] if kids_masked else [])] if masked else _KEEP
-    return instructions(_INTRO, _TRANSLATE, _KEEP_FINNISH, keep, src, dst, target, tomorrow)
+    intro = Template(_INTRO.template + _WEEK) if week else _INTRO
+    return instructions(intro, _TRANSLATE, _KEEP_FINNISH, keep, src, dst, target, tomorrow)
 
 
 def _unprefixed(what: str, t: BriefText) -> str:
@@ -87,7 +93,38 @@ def _unprefixed(what: str, t: BriefText) -> str:
 
 
 def _has_text(brief: Brief) -> bool:
-    return bool(brief.digest or brief.events or brief.groups or any(brief.entries()))
+    return bool(brief.digest or brief.events or brief.groups or any(brief.entries()) or _week_text(brief))
+
+
+def _week_text(brief: Brief) -> list[WeekItem]:
+    """The Week Ahead's items whose text the model wrote, which a translation translates; a
+    Source's own events keep their words, as in the Brief's list of new events."""
+    return [i for i in brief.week if not i.from_source]
+
+
+def _week_payload(brief: Brief) -> list[dict[str, str]]:
+    return [{"text": i.text, **({"description": i.detail} if i.detail else {})} for i in _week_text(brief)]
+
+
+def _merge_week(out: Brief, data: Any) -> None:
+    """The Week Ahead's text from the reply's `week_ahead`, entry by entry in the original's order.
+    The week only repeats what is known, so a reply that lacks it or has another number of entries
+    leaves the week as written rather than failing the whole translation; an entry without a text
+    keeps its own."""
+    items = _week_text(out)
+    if not items:
+        return
+    got = data.get("week_ahead") if isinstance(data, dict) else None
+    if not isinstance(got, list) or len(got) != len(items):
+        log.warning("The translation has no matching week_ahead; the Week Ahead stays as written")
+        return
+    for item, g in zip(items, got):
+        g = g if isinstance(g, dict) else {}
+        text, detail = g.get("text"), g.get("description")
+        if isinstance(text, str) and text.strip():
+            item.text = citations.keep_links(text, item.text)
+        if item.detail and isinstance(detail, str) and detail.strip():
+            item.detail = citations.keep_links(detail, item.detail)
 
 
 def _skeleton(brief: Brief, label: Callable[[str | None], str | None] = lambda kid: kid) -> tuple:
@@ -162,11 +199,17 @@ def translate(cfg: Config, brief: Brief, original: Language, target: Language,
     tomorrow = date.fromisoformat(today or today_str(cfg.timezone)) + timedelta(days=1)
     # Restored before the checks, which compare links with the original's.
     payload = for_translation(brief, lambda what: _unprefixed(what, src))
-    reply = parse(call_llm_filtered(cfg, "", payload,
-                                    lambda masked, kids: system_prompt(src, dst, target, tomorrow, masked, kids),
-                                    dst.placeholder_words(), placeholders).data)
+    week = _week_payload(brief)
+    if week:
+        payload["week_ahead"] = week
+    data = call_llm_filtered(cfg, "", payload,
+                             lambda masked, kids: system_prompt(src, dst, target, tomorrow, masked, kids, bool(week)),
+                             dst.placeholder_words(), placeholders).data
+    reply = parse(data)
     _check(brief, reply, src, dst)
-    return _merge(brief, reply, src, dst)
+    out = _merge(brief, reply, src, dst)
+    _merge_week(out, data)
+    return out
 
 
 def per_language(what: str, original: Language, by_language: dict[Language, list[str]],

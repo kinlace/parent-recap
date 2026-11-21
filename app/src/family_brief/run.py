@@ -16,17 +16,17 @@ from typing import TYPE_CHECKING, Callable, Literal
 from zoneinfo import ZoneInfo
 
 from . import (ai_filter, gateway, languages, last_run, llm, private_files, render, run_report, slept,
-               wilma_egress)
+               week_ahead, wilma_egress)
 from . import sources as source_registry
 from .actions import archive, calendar as calendar_action, email as email_action, imessage
 from .brief import Brief, EarlierBrief, RunNotes
-from .brief_text import BriefText, Language
+from .brief_text import TEXT, BriefText, Language
 from .collectors.base import CalendarEvent, Message
 from .config import Config
 from .llm import retry
 from .state import State
 from .system import profile
-from .summarize import extract_calendar_events, for_the_ai, placeholders_for, summarize
+from .summarize import extract_calendar_events, for_the_ai, household_names, placeholders_for, summarize
 from .translate import per_language, translate
 
 if TYPE_CHECKING:
@@ -64,6 +64,7 @@ class IO:
     upcoming_events: Callable[[Config, int], list[dict]]
     create_events: Callable[[Config, State, list[CalendarEvent], list[dict]], None]
     recent_points: Callable[[Config, str], list[EarlierBrief]]
+    earlier_nights: Callable[[Config, str], list[week_ahead.EarlierNight]]  # for the Week Ahead
     write_archive: Callable[[Config, str, list[Message], Brief, RunNotes, list[dict], bool], Path]
     load_state: Callable[[Path], State]
     wait_for_network: Callable[[str], None]
@@ -79,6 +80,7 @@ class IO:
             upcoming_events=calendar_action.get_upcoming_events,
             create_events=calendar_action.create_events,
             recent_points=archive.recent_points,
+            earlier_nights=archive.earlier_nights,
             write_archive=archive.write,
             load_state=State,
             wait_for_network=lambda host: wait_for_network(probe_host=host),
@@ -265,6 +267,11 @@ class _Read:
     earlier: list[EarlierBrief]
     due_soon: bool
     event_tomorrow: bool
+    # On a Sunday, the coming Monday to Friday and the earlier evenings the Week Ahead is made from
+    # (ADR 0053), and the week as known before tonight's Brief is written.
+    week_days: list[date] = field(default_factory=list)
+    week_nights: list[week_ahead.EarlierNight] = field(default_factory=list)
+    week: list[week_ahead.WeekItem] = field(default_factory=list)
 
     @property
     def today(self) -> str:
@@ -272,7 +279,8 @@ class _Read:
 
     @property
     def anything_new(self) -> bool:
-        return bool(self.messages or self.direct_events or self.due_soon)
+        # A Sunday whose week has something sends its Brief, though nothing else is new.
+        return bool(self.messages or self.direct_events or self.due_soon or self.week)
 
 
 def _read(cfg: Config, options: Options, io: IO, state: State, started: datetime) -> _Read:
@@ -294,8 +302,31 @@ def _read(cfg: Config, options: Options, io: IO, state: State, started: datetime
     today = started.strftime("%Y-%m-%d")
     earlier = io.recent_points(cfg, today)
     tomorrow = started.date() + timedelta(days=1)
-    return _Read(started, messages, direct_events, coverage, earlier, archive.has_due_soon(earlier, today),
+    read = _Read(started, messages, direct_events, coverage, earlier, archive.has_due_soon(earlier, today),
                  any(e.start.date() == tomorrow for e in direct_events))
+    read.week_days = week_ahead.week_after(started.date())
+    if read.week_days:
+        read.week_nights = io.earlier_nights(cfg, today)
+        read.week = _week(cfg, read, Brief(), [])
+    return read
+
+
+def _listed(cfg: Config, events: list[CalendarEvent]) -> list[CalendarEvent]:
+    """The Sources' events a Brief lists when they are new: in ics mode only those of a Source the
+    .ics takes (MyClub's only when asked for), in google mode all of them."""
+    if cfg.google_calendar.mode == "google":
+        return events
+    return [e for e in events if (source := source_registry.named(e.source)) is None or source.in_ics(cfg)]
+
+
+def _week(cfg: Config, read: _Read, brief: Brief, model_events: list[CalendarEvent]) -> list[week_ahead.WeekItem]:
+    """The Week Ahead from tonight's Sources' events, tonight's `brief` and its `model_events`, and
+    the earlier evenings' Briefs (ADR 0053). No model call."""
+    t = languages.text(cfg, cfg.brief_language())
+    return week_ahead.items(
+        read.week_days, _listed(cfg, read.direct_events), brief, model_events, read.week_nights,
+        kid_called=cfg.kid_called, household=[t.household, *(x.household for x in TEXT.values())],
+        reminders=[t.re_reminder, *(x.re_reminder for x in TEXT.values())], model_events=lambda b: extract_calendar_events(b, cfg.timezone, t.untitled))
 
 
 # ── Writing the Brief
@@ -483,6 +514,10 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
     if held:  # the messages in the archive that the AI never saw
         notes.held_back = [m.external_id for m in held]
     model_events = extract_calendar_events(brief, cfg.timezone, t.untitled)
+    if read.week_days:
+        brief.week = _week(cfg, read, brief, model_events)
+        if placeholders is not None:  # the earlier evenings' people, for the translations (ADR 0013)
+            placeholders.add_people(week_ahead.people(read.week_nights), keep_names=household_names(cfg))
     calendar = _write_calendar(cfg, io, state, model_events + read.direct_events, sends, google_ready)
     date_str = read.today
     night = render.Night(
@@ -551,7 +586,9 @@ def _versions(cfg: Config, written: _Written) -> list[render.Version]:
         if translated is None:
             # The model is down, so there is nothing to translate; the raw list comes in their words.
             assert error is not None
-            return render.Version(t, to, _fallback_brief(written.for_ai, error, t, cfg, written.night.slept))
+            fallback = _fallback_brief(written.for_ai, error, t, cfg, written.night.slept)
+            fallback.week = brief.week  # as written: the model that would translate it is down
+            return render.Version(t, to, fallback)
         events = extract_calendar_events(translated, cfg.timezone, t.untitled)
         return render.Version(t, to, translated, {
             (ev.title, ev.start_iso()): tev for ev, tev in zip(written.model_events, events)})

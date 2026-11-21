@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator, Union
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Union
+
+if TYPE_CHECKING:
+    from .week_ahead import WeekItem
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +88,9 @@ class Brief:
     kids: list[KidSection] = field(default_factory=list)
     events: list[Event] = field(default_factory=list)
     groups: list[GroupDigest] = field(default_factory=list)
+    # The Week Ahead, which the program adds to Sunday's Brief from what it already has (ADR 0053):
+    # never the model's to write, and not archived, since the archive is what it is made from.
+    week: list[WeekItem] = field(default_factory=list)
 
     def entries(self) -> Iterator[Entry]:
         """Every Notice and Action Item, Kid by Kid."""
