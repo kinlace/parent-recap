@@ -599,9 +599,8 @@ def mail(night: Night, v: Version) -> Mail:
     calendar_note = _calendar_note(night.calendar_problem, bool(night.ics_events), t, assistant)
     top_note = _top_note(night.incomplete, t, assistant, v.translation_note, night.slept,
                          night.caught_up, night.update, night.demo)
-    attachments = [(f"parent-recap-{night.date}.ics",
-                    ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
-                    ics_action.MIME_TYPE)] if night.ics_events else []
+    attachments = [(name, payload, ics_action.MIME_TYPE) for name, payload in
+                   ics_action.files(night.ics_events, night.tz, night.stamp, v.translated_event)]
     end = EndNote(t, night.hosted, unread_sender(t, night.write_to))
     html = _daily_brief_html(v.brief, listed, night.date, t, night.tz, calendar_note,
                              ics_attached=bool(attachments), coverage=coverage_note,

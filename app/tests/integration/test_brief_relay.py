@@ -300,8 +300,7 @@ def test_one_request_is_one_message_to_every_recipient_from_parent_recaps_addres
 
 @pytest.mark.parametrize("content_type", ["application/ics", "text/calendar", "Text/Calendar"])
 def test_the_ics_arrives_as_a_plain_file_never_a_gmail_event_card(tmp_path, day, content_type):
-    # A text/calendar part makes Gmail try an event card, which can't show several events and
-    # says "Unable to load event" (#1034); installs from before the fix still send text/calendar.
+    # A plain file, as the app sends it since #1034; installs from before still send text/calendar.
     brief = {**BRIEF, "attachments": [{**BRIEF["attachments"][0], "content_type": content_type}]}
     post(make_relay(tmp_path, day), body=brief)
     [(_, _, msg)] = FakeSMTP.sent
@@ -310,6 +309,22 @@ def test_the_ics_arrives_as_a_plain_file_never_a_gmail_event_card(tmp_path, day,
     assert ics.get_content_type() == "application/ics"
     assert ics.get_param("method") is None
     assert ics.get_payload(decode=True) == ICS
+
+
+def test_a_brief_with_an_ics_per_event_arrives_with_every_file(tmp_path, day):
+    # The app attaches one .ics per event, up to its ics.MAX_FILES (#1034), named by day and title.
+    from family_brief.actions import ics
+    assert br.MAX_ATTACHMENTS >= ics.MAX_FILES
+    names = [f"2026-09-{28 + i % 3} 训练 {i}.ics" for i in range(br.MAX_ATTACHMENTS)]
+    files = [{"filename": n, "content_type": "application/ics", "data": base64.b64encode(ICS).decode()}
+             for n in names]
+    status, _ = post(make_relay(tmp_path, day), body={**BRIEF, "attachments": files})
+    assert status == 200
+    [(_, _, msg)] = FakeSMTP.sent
+    assert [a.get_filename() for a in msg.iter_attachments()] == names
+
+    status, body = post(make_relay(tmp_path, day), body={**BRIEF, "attachments": files + files[:1]})
+    assert status == 400 and body["error"]
 
 
 def test_text_alone_is_enough(tmp_path, day):

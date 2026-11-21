@@ -293,7 +293,7 @@ def test_a_kid_s_events_from_every_club_come_once_under_that_kid(harness):
     assert queued(harness) == [("⚽ Club gala", "Kid A"), ("⚽ Football training", "Kid A"),
                                ("⚽ Swimming", "Kid A")]
     [email] = harness.sent
-    ics = next(body for name, body, _ in email.attachments if name.endswith(".ics")).decode()
+    ics = email.calendar().decode()
     assert ics.count("Club gala") == 1 and "Swimming" in ics and "Football training" in ics
 
 

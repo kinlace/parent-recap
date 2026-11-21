@@ -51,7 +51,7 @@ def test_tomorrow_s_eepos_lessons_are_in_the_brief_and_counted(harness):
     assert coverage(harness) == ("📥 Read tonight: Gmail 0 messages · MyClub 0 events · Wilma 0 messages · "
                                  "WhatsApp 0 messages · Eepos 3 events")
     # Each goes into the .ics once, the holiday as one all-day event.
-    _, ics, _ = email.attachment(".ics")
+    ics = email.calendar()
     assert ics.count(b"BEGIN:VEVENT") == 3 and b"DTSTART;VALUE=DATE:20261005" in ics
     assert b"DTSTART:20260928T140000Z" in ics  # 17:00 in Helsinki
 

@@ -393,7 +393,7 @@ def exams(*items: dict[str, Any]) -> dict[str, Any]:
 
 
 def vevents(harness, night: int = -1) -> list[str]:
-    _, ics, _ = harness.sent[night].attachment(".ics")
+    ics = harness.sent[night].calendar()
     return ics.decode().replace("\r\n", "\n").split("BEGIN:VEVENT")[1:]
 
 

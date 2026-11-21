@@ -57,7 +57,7 @@ def test_a_new_message_news_and_planned_times_reach_the_brief_under_their_kid_on
     [email] = harness.sent
     assert "Mon 28.9. BSO trip to the farm, bring boots" in email.text
     assert coverage(harness).endswith("Konnect 2 messages and 2 events")
-    _, ics, _ = email.attachment(".ics")
+    ics = email.calendar()
     assert ics.count(b"BEGIN:VEVENT") == 2 and b"Opvang (optie)" in ics
     assert b"DTSTART:20260928T120000Z" in ics  # 14:00 in Amsterdam
 

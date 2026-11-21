@@ -86,7 +86,7 @@ def test_coming_events_are_in_the_brief_its_ics_and_counted(harness):
     assert "Studiedag" in call.prompt and "Oudergesprek" in call.prompt
     [email] = harness.sent
     assert coverage(harness).endswith("Social Schools 2 events")
-    _, ics, _ = email.attachment(".ics")
+    ics = email.calendar()
     assert ics.count(b"BEGIN:VEVENT") == 2 and b"DTSTART;VALUE=DATE:20260930" in ics
     assert b"DTSTART:20260929T133000Z" in ics
 

@@ -94,8 +94,8 @@ def test_the_demo_sends_a_complete_brief_in_the_language_given(harness, capsys, 
     assert f"• Gmail · {HELD_SENDER} · {HELD_SUBJECT} · " in email.text
     assert f"\n{t.action_items}\n• Answer the teacher about the Planetarium trip" in email.text
     assert f"\n{t.new_events_line}\n" in email.text
-    [(name, ics, mime)] = email.attachments
-    assert mime == "application/ics"
+    assert {mime for *_, mime in email.attachments} == {"application/ics"}
+    ics = email.calendar()
     for title in ("Planetarium trip", "Salibandyharjoitukset", "Pianotunti", "Koe: Matematiikka",
                   "Satakielen perhekahvit"):
         assert title in ics.decode()

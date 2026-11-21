@@ -379,7 +379,7 @@ def test_a_student_found_is_added_as_a_kid_and_the_evening_puts_their_lessons_un
     harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": "- Piano"}
     assert harness.run() == 0
     [email] = harness.sent
-    _, ics, _ = email.attachment(".ics")
+    ics = email.calendar()
     assert "Parent Recap · Leevi]".encode() in ics.replace(b"\r\n ", b"")
 
 

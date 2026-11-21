@@ -58,7 +58,7 @@ def test_tomorrow_s_daycare_events_closures_and_deadline_are_in_the_brief_and_co
     assert coverage(harness) == ("📥 Read tonight: Gmail 0 messages · MyClub 0 events · Wilma 0 messages · "
                                  "WhatsApp 0 messages · eVaka 4 events")
     # Each goes into the .ics once: the events and the closed day all day, the deadline at its time.
-    _, ics, _ = email.attachment(".ics")
+    ics = email.calendar()
     assert ics.count(b"BEGIN:VEVENT") == 4 and b"DTSTART;VALUE=DATE:20261009" in ics
     assert b"DTSTART:20260928T150000Z" in ics  # 18:00 in Helsinki
 

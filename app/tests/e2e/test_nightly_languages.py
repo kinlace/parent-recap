@@ -9,7 +9,7 @@ from html import escape
 
 import pytest
 
-from conftest import html_for_golden, ics_for_golden
+from conftest import html_for_golden, ics_files_for_golden, ics_for_golden
 
 from nights import ENGLISH_REPLY, PARTNER_EN, archived_summary, model_call_for_golden, normal_night, two_languages
 
@@ -40,13 +40,11 @@ def test_second_recipient_gets_the_brief_translated_into_their_language(harness,
     # The first Recipient gets exactly the Brief a Chinese-only Household gets.
     golden("normal_night.zh.txt", zh.text)
     golden("normal_night.zh.html", html_for_golden(zh.html))
-    golden("normal_night.zh.ics", ics_for_golden(zh.attachment(".ics")[1]))
+    golden("normal_night.zh.ics", ics_files_for_golden(zh.attachments))
     assert en.subject == zh.subject
     golden("two_languages.en.txt", en.text)
     golden("two_languages.en.html", html_for_golden(en.html))
-    name, payload, _ = en.attachment(".ics")
-    assert name == "parent-recap-2026-09-27.ics"
-    golden("two_languages.en.ics", ics_for_golden(payload))
+    golden("two_languages.en.ics", ics_files_for_golden(en.attachments))
 
     summarize, translate = harness.model_calls
     golden("normal_night.zh.masked.model.txt", model_call_for_golden(summarize))
@@ -81,7 +79,7 @@ def test_translation_adds_no_link_to_an_event(harness):
     assert harness.run() == 0
 
     _zh, en = harness.sent
-    ics = en.attachment(".ics")[1].decode().replace("\r\n ", "")  # unfolded
+    ics = en.calendar().decode().replace("\r\n ", "")  # unfolded
     assert "rain gear (gmail) Book at" in ics
     assert "pay-kilo" not in ics
 
@@ -155,7 +153,7 @@ def test_failed_translation_sends_that_recipient_the_original(harness, golden, t
     # The original, with a line in English at the top saying why.
     golden("failed_translation.en.txt", en.text)
     golden("failed_translation.en.html", html_for_golden(en.html))
-    golden("normal_night.zh.ics", ics_for_golden(en.attachment(".ics")[1]))
+    golden("normal_night.zh.ics", ics_files_for_golden(en.attachments))
     assert (en.text, en.html) == with_note(zh, FAILED_EN)
     # The first Recipient's Brief and the archive are as on a night the translation works.
     golden("normal_night.zh.txt", zh.text)

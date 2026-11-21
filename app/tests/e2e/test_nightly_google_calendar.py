@@ -229,7 +229,7 @@ def test_any_source_can_bring_events_beside_its_messages(harness, monkeypatch):
     assert archived["summary"]["_coverage"]["schoolapp"] == {"count": 1, "error": None}
 
 
-ICS_FALLBACK = "这些新事件已打包在邮件附件的 .ics 里，点开附件即可加入日历。"
+ICS_FALLBACK = "这些新事件都附在邮件里，每个是一个 .ics 文件，点开就能加入日历。"
 REAUTH = "跟 Claude 说「重新授权 Google Calendar」即可修复。"
 
 
@@ -245,9 +245,8 @@ def assert_ics_fallback(email, note: str) -> None:
     """The Brief warns, says the events are attached, and attaches them filtered as in .ics mode."""
     assert without_unread_note(email.text).endswith("\n\n" + note + ICS_FALLBACK)
     assert note + ICS_FALLBACK in email.html
-    [(name, payload, mime)] = email.attachments
-    assert (name, mime) == ("parent-recap-2026-09-27.ics", "application/ics")
-    ics = payload.decode()
+    assert {mime for *_, mime in email.attachments} == {"application/ics"}
+    ics = email.calendar().decode()
     # The two model events; MyClub stays out unless ics_include_myclub is set.
     assert ics.count("BEGIN:VEVENT") == 2
     assert "3B 远足 Nuuksio" in ics and "钢琴课（改期）" in ics and "FC Kilo" not in ics
@@ -295,12 +294,12 @@ def test_google_mode_notes_are_in_english(harness):
     [email] = harness.sent
     note = ("⚠️ Google Calendar access has expired, so new events were not added to it. "
             "Tell Claude “re-authorize Google Calendar” to fix it. "
-            "The new events are in the .ics attached to this email; open it to add them to your calendar.")
+            "Each new event is attached to this email as an .ics file; open one to add it to your calendar.")
     # The last paragraph but the unread address's, which ends every Brief.
     assert without_unread_note(email.text).endswith("\n\n" + note)
     assert "📅 New calendar events:\n• Piano lesson (moved)" in email.text  # in date order
     assert ("<h3>📅 New calendar events</h3><p style='color:#666'>Linked events are in Google Calendar; "
-            "the rest are in the attached .ics. Open it to add them to your calendar.</p>") in email.html
+            "each of the rest is attached as an .ics file. Open one to add it to your calendar.</p>") in email.html
 
 
 def test_google_mode_partial_write_attaches_only_the_rest(harness):
@@ -310,14 +309,14 @@ def test_google_mode_partial_write_attaches_only_the_rest(harness):
     assert harness.run() == 0
 
     [email] = harness.sent
-    _, payload, _ = email.attachment(".ics")
+    payload = email.calendar()
     ics = payload.decode()
     assert ics.count("BEGIN:VEVENT") == 1 and "钢琴课（改期）" in ics
     # The event Google took before failing is still listed, linked, beside the attached one.
     assert "• 3B 远足 Nuuksio" in email.text and "• 钢琴课（改期）" in email.text
     assert '<a href="https://calendar.google.com/event?eid=gev1">3B 远足 Nuuksio</a>' in email.html
     assert "钢琴课（改期）</a>" not in email.html
-    assert "带链接的已写入 Google 日历，其余已打包在邮件附件的 .ics 里" in email.html
+    assert "带链接的已写入 Google 日历，其余每个事件都附在邮件里，是一个 .ics 文件" in email.html
 
     # Re-authorized: neither the written event nor the attached one is created again.
     harness.calendar.error = None
@@ -332,7 +331,7 @@ def test_google_mode_fallback_includes_myclub_when_configured(harness):
 
     assert harness.run() == 0
 
-    _, payload, _ = harness.sent[0].attachment(".ics")
+    payload = harness.sent[0].calendar()
     assert payload.count(b"BEGIN:VEVENT") == 3
 
 
@@ -349,7 +348,7 @@ def test_google_mode_fallback_retries_after_failed_email(harness):
     with time_machine.travel(NOW + timedelta(days=1), tick=False):
         assert harness.run() == 0
     [email] = harness.sent
-    _, payload, _ = email.attachment(".ics")
+    payload = email.calendar()
     assert payload.count(b"BEGIN:VEVENT") == 2
 
 

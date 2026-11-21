@@ -53,8 +53,9 @@ def test_the_evening_brief_with_ics_runs_without_them(harness, no_google):
     assert harness.run() == 0
 
     [email] = harness.sent
-    [(name, _, mime)] = email.attachments
-    assert (name, mime) == ("parent-recap-2026-09-27.ics", "application/ics")
+    assert email.attachments
+    assert all(name.endswith(".ics") and mime == "application/ics"
+               for name, _, mime in email.attachments)
 
 
 def test_google_mode_without_them_sends_the_events_as_ics(harness, no_google):
