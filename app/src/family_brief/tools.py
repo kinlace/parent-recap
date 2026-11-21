@@ -103,11 +103,14 @@ def _remembered() -> dict[str, str]:
 
 
 def _remember(name: str, path: str) -> None:
-    """Best effort: without it, the evening job still finds what PATH and the folders lead to."""
-    data = {**_remembered(), name: path}
+    """Best effort: without it, the evening job still finds what PATH and the folders lead to.
+    Only on a computer Parent Recap is set up on: before setup there's no evening job to remember
+    it for, and the demo, which can run before setup, leaves the home folder as it was."""
     file = remembered_path()
+    if not file.parent.is_dir():
+        return
+    data = {**_remembered(), name: path}
     try:
-        file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         tmp = file.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         tmp.chmod(0o600)
