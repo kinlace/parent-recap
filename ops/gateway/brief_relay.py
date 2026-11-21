@@ -369,10 +369,12 @@ def message(body: Any, stop_url: str) -> tuple[EmailMessage, list[str]]:
             payload = None
         if payload is None:
             raise Refused(400, "an attachment's `data` must be base64")
-        # Calendar apps offer to add an .ics only when it says METHOD:PUBLISH, as the program's
-        # own Gmail sending does.
-        params = {"params": {"method": "PUBLISH"}} if mime.lower() == "text/calendar" else {}
-        msg.add_attachment(payload, maintype=m[1], subtype=m[2], filename=filename, **params)
+        # A text/calendar part makes Gmail try an event card, which shows one invitation, not a
+        # Brief's several events, and says "Unable to load event" above the Brief (#1034). As a
+        # plain application/ics file it is offered to the calendar app instead. Installs from
+        # before the fix still send text/calendar.
+        maintype, subtype = ("application", "ics") if m[0] == "text/calendar" else (m[1], m[2])
+        msg.add_attachment(payload, maintype=maintype, subtype=subtype, filename=filename)
     return msg, to
 
 

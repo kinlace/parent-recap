@@ -39,7 +39,7 @@ def test_normal_night_matches_golden(harness, golden, language):
     golden(f"normal_night.{language}.html", html_for_golden(email.html))
 
     [(name, payload, mime)] = email.attachments
-    assert (name, mime) == ("parent-recap-2026-09-27.ics", "text/calendar")
+    assert (name, mime) == ("parent-recap-2026-09-27.ics", "application/ics")
     golden(f"normal_night.{language}.ics", ics_for_golden(payload))
 
     [call] = harness.model_calls

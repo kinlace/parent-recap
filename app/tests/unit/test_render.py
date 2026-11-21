@@ -70,7 +70,7 @@ def check(golden, name: str, mail: render.Mail, ics: bool = False) -> None:
     golden(f"{name}.html", html_for_golden(mail.html))
     if ics:
         [(file, payload, mime)] = mail.attachments
-        assert (file, mime) == (f"parent-recap-{DATE}.ics", "text/calendar")
+        assert (file, mime) == (f"parent-recap-{DATE}.ics", "application/ics")
         golden(f"{name}.ics", ics_for_golden(payload))
 
 

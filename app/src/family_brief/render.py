@@ -601,7 +601,7 @@ def mail(night: Night, v: Version) -> Mail:
                          night.caught_up, night.update, night.demo)
     attachments = [(f"parent-recap-{night.date}.ics",
                     ics_action.build(night.ics_events, night.tz, night.stamp, v.translated_event),
-                    "text/calendar")] if night.ics_events else []
+                    ics_action.MIME_TYPE)] if night.ics_events else []
     end = EndNote(t, night.hosted, unread_sender(t, night.write_to))
     html = _daily_brief_html(v.brief, listed, night.date, t, night.tz, calendar_note,
                              ics_attached=bool(attachments), coverage=coverage_note,

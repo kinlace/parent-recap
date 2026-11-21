@@ -298,13 +298,17 @@ def test_one_request_is_one_message_to_every_recipient_from_parent_recaps_addres
     assert msg.get_body(("html",)).get_content().strip() == BRIEF["html"]
 
 
-def test_the_ics_arrives_as_an_attachment_calendar_apps_offer_to_add(tmp_path, day):
-    post(make_relay(tmp_path, day))
+@pytest.mark.parametrize("content_type", ["application/ics", "text/calendar", "Text/Calendar"])
+def test_the_ics_arrives_as_a_plain_file_never_a_gmail_event_card(tmp_path, day, content_type):
+    # A text/calendar part makes Gmail try an event card, which can't show several events and
+    # says "Unable to load event" (#1034); installs from before the fix still send text/calendar.
+    brief = {**BRIEF, "attachments": [{**BRIEF["attachments"][0], "content_type": content_type}]}
+    post(make_relay(tmp_path, day), body=brief)
     [(_, _, msg)] = FakeSMTP.sent
     [ics] = list(msg.iter_attachments())
     assert ics.get_filename() == "events.ics"
-    assert ics.get_content_type() == "text/calendar"
-    assert ics.get_param("method") == "PUBLISH"
+    assert ics.get_content_type() == "application/ics"
+    assert ics.get_param("method") is None
     assert ics.get_payload(decode=True) == ICS
 
 

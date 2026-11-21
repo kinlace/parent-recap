@@ -68,14 +68,14 @@ def send(cfg: Config | None = None, **kwargs: Any) -> None:
 
 
 def test_the_gateway_is_sent_the_brief_with_the_key_in_its_header(relay):
-    send(attachments=[("parent-recap-2026-09-27.ics", ICS, "text/calendar")])
+    send(attachments=[("parent-recap-2026-09-27.ics", ICS, "application/ics")])
 
     [request] = relay.requests
     assert request["url"] == f"{URL}/v1/brief"
     assert request["headers"] == {"x-api-key": KEY}
     assert request["json"] == {
         "to": RECIPIENTS, "subject": SUBJECT, "text": TEXT, "html": HTML,
-        "attachments": [{"filename": "parent-recap-2026-09-27.ics", "content_type": "text/calendar",
+        "attachments": [{"filename": "parent-recap-2026-09-27.ics", "content_type": "application/ics",
                          "data": base64.b64encode(ICS).decode()}]}
 
 
