@@ -169,17 +169,20 @@ def household(to: str, language: str, llm: LLMConfig, folder: Path) -> Config:
 
 # ── The demo
 
+DEMO_MARK = "🧪"
+
 Send = Callable[[Config, render.Mail], None]
 
 
 def _relay(sent: list[render.Mail], failed: list[Exception]) -> Send:
     """The demo's way out: the gateway's relay with the stored Gateway Key, as every Brief is sent
     (ADR 0032), but never asking for a key, nor binding the address to one (ADR 0033): that is the
-    Household's own. Each mail handed to it is kept, and why one didn't go."""
+    Household's own. Each mail handed to it is kept, and why one didn't go. Its subject starts
+    with the 🧪 the demo line has, so in an inbox it isn't taken for the family's own Brief."""
     def send(cfg: Config, mail: render.Mail) -> None:
         sent.append(mail)
         try:
-            email_action.gateway(cfg.llm.gateway_url, mail.subject, mail.text, mail.to, mail.html,
+            email_action.gateway(cfg.llm.gateway_url, f"{DEMO_MARK} {mail.subject}", mail.text, mail.to, mail.html,
                                  mail.attachments)
         except Exception as e:
             failed.append(e)

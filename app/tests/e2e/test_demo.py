@@ -85,6 +85,7 @@ def test_the_demo_sends_a_whole_brief_of_the_made_up_household_in_the_language_a
 
     [email] = harness.sent
     assert email.to == [TO]
+    assert email.subject.startswith("🧪 ")  # not taken for the family's own Brief in an inbox
     # It says first that it's a demo, above everything else.
     assert email.text.index(TEXT["fi"].demo) < email.text.index("Ella")
     assert TEXT["fi"].demo in email.html
