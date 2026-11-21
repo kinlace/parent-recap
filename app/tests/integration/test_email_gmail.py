@@ -157,16 +157,18 @@ def test_without_html_the_email_is_the_plain_text_alone_inside_the_alternative(s
     assert list(parts_by_subtype(alt)) == ["plain"]
 
 
-def test_a_calendar_attachment_goes_beside_the_alternative_as_a_publish_ics(smtp):
-    send(attachments=[("events.ics", ICS, "text/calendar")])
+def test_an_ics_goes_beside_the_alternative_as_a_plain_file_not_an_event_card(smtp):
+    # A text/calendar part with method=PUBLISH makes Gmail try an event card, which
+    # can't show several events and says "Unable to load event" (#1034).
+    send(attachments=[("events.ics", ICS, "application/ics")])
 
     msg = received(smtp)
     assert msg.get_content_type() == "multipart/mixed"
     alt, ics = msg.iter_parts()
     assert alt.get_content_type() == "multipart/alternative"
     assert parts_by_subtype(alt)["plain"].get_content().strip() == TEXT
-    assert ics.get_content_type() == "text/calendar"
-    assert ics.get_param("method") == "PUBLISH"
+    assert ics.get_content_type() == "application/ics"
+    assert ics.get_param("method") is None
     assert ics.get_filename() == "events.ics"
     assert ics.get_payload(decode=True) == ICS
 

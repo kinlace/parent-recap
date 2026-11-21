@@ -53,7 +53,7 @@ def send(cfg: Config, subject: str, body_text: str, to_addrs: list[str],
     """Send one email to `to_addrs` by `cfg`'s transport: the Household's own Gmail when it sends
     from there, else the gateway `cfg` names. A send that fails raises, saying why.
 
-    attachments: (filename, payload, mime type) tuples, e.g. ("events.ics", b"...", "text/calendar").
+    attachments: (filename, payload, mime type) tuples, e.g. ("events.ics", b"...", "application/ics").
     """
     if not to_addrs:
         log.warning("email: no recipients configured")
@@ -128,8 +128,6 @@ def gmail(from_addr: str, subject: str, body_text: str, to_addrs: list[str],
         for filename, payload, mime in attachments:
             maintype, subtype = mime.split("/", 1)
             part = MIMEBase(maintype, subtype, name=filename)
-            if mime == "text/calendar":
-                part.set_param("method", "PUBLISH")
             part.set_payload(payload)
             encoders.encode_base64(part)
             part.add_header("Content-Disposition", "attachment", filename=filename)

@@ -246,7 +246,7 @@ def assert_ics_fallback(email, note: str) -> None:
     assert without_unread_note(email.text).endswith("\n\n" + note + ICS_FALLBACK)
     assert note + ICS_FALLBACK in email.html
     [(name, payload, mime)] = email.attachments
-    assert (name, mime) == ("parent-recap-2026-09-27.ics", "text/calendar")
+    assert (name, mime) == ("parent-recap-2026-09-27.ics", "application/ics")
     ics = payload.decode()
     # The two model events; MyClub stays out unless ics_include_myclub is set.
     assert ics.count("BEGIN:VEVENT") == 2

@@ -10,6 +10,11 @@ from ..brief_text import PRODUCT_NAME
 from ..collectors.base import CalendarEvent
 from .calendar import calendar_uid
 
+# The .ics goes on the Brief as a plain file, not text/calendar: Gmail takes a text/calendar part
+# for an invitation and, with a Brief's several events, shows "Unable to load event" above the
+# Brief instead (#1034). Tapping the file still offers to add every event.
+MIME_TYPE = "application/ics"
+
 
 def _utc(dt: datetime, tz: str) -> datetime:
     # Naive datetimes from the LLM are wall-clock times in the family's timezone.
