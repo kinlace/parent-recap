@@ -6,20 +6,21 @@ from __future__ import annotations
 import copy
 import dataclasses
 import html
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 from urllib.parse import parse_qs, urlsplit
 
-from conftest import NOW, TZ, html_for_golden, ics_for_golden, without_unread_note
+from conftest import NOW, TZ, html_for_golden, ics_files_for_golden, ics_for_golden, without_unread_note
 from fake_system import LINUX
 from nights import ENGLISH_REPLY, normal_night
 
 from family_brief import render, update
 from family_brief.brief import Brief, parse
 from family_brief.brief_text import TEXT, BriefText, recommend_link
-from family_brief.collectors.base import Message
+from family_brief.actions import ics as ics_action
+from family_brief.collectors.base import CalendarEvent, Message
 from family_brief.summarize import extract_calendar_events
 
 DATE = "2026-09-27"
@@ -69,9 +70,7 @@ def check(golden, name: str, mail: render.Mail, ics: bool = False) -> None:
     golden(f"{name}.txt", mail.text)
     golden(f"{name}.html", html_for_golden(mail.html))
     if ics:
-        [(file, payload, mime)] = mail.attachments
-        assert (file, mime) == (f"parent-recap-{DATE}.ics", "application/ics")
-        golden(f"{name}.ics", ics_for_golden(payload))
+        golden(f"{name}.ics", ics_files_for_golden(mail.attachments))
 
 
 @pytest.mark.parametrize("language", ["en", "zh", "fi"])
@@ -326,7 +325,7 @@ def test_night_its_translation_failed(golden):
 
     check(golden, "normal_night.zh", first)
     check(golden, "failed_translation.en", partner)
-    golden("normal_night.zh.ics", ics_for_golden(partner.attachments[0][1]))
+    golden("normal_night.zh.ics", ics_files_for_golden(partner.attachments))
 
 
 def every_kind(t: BriefText, hosted: bool) -> dict[str, tuple[str, str]]:
@@ -466,3 +465,23 @@ def test_the_new_calendar_events_are_listed_by_start_whatever_source_gave_them()
     for listed in (mail.text, mail.html, night.text()):
         at = [listed.index(html.escape(title) if listed is mail.html else title) for title in order]
         assert at == sorted(at), listed
+
+
+@pytest.mark.parametrize("count, last", [(7, 1), (ics_action.MAX_FILES, 1), (ics_action.MAX_FILES + 5, 6)])
+def test_each_event_is_an_ics_file_of_its_own_so_gmail_lists_them_all(count, last):
+    """Gmail shows a card for each .ics on a mail but only a file's first event, and a file of 7
+    or more events breaks the card into "Unable to load event" (#1034). Past MAX_FILES, the rest
+    share the last file, so a full week stays a mail's worth of attachments."""
+    t = TEXT["zh"]
+    start = datetime(2026, 9, 28, 16, 0)  # a wall-clock time in the family's timezone
+    events = [CalendarEvent("myclub", f"e{i}", f"训练/{i}", start + timedelta(days=count - i))
+              for i in range(count)]
+    night = brief_of(Brief(), t, created=[], ics_events=events)
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+    files = [(name, payload.decode(), mime) for name, payload, mime in mail.attachments]
+    assert len(files) == min(count, ics_action.MAX_FILES)
+    assert {mime for *_, mime in files} == {"application/ics"}
+    assert [ics.count("BEGIN:VEVENT") for _, ics, _ in files] == [1] * (len(files) - 1) + [last]
+    # By start, named by day and title, with no slash to break a file name.
+    assert files[0][0] == "2026-09-29 训练-" + str(count - 1) + ".ics"
+    assert "SUMMARY:训练/" + str(count - 1) in files[0][1]

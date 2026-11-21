@@ -1,3 +1,20 @@
+=== 2026-09-30 Piano lesson (moved).ics
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//FamilyBrief//family-brief//ZH
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+SUMMARY:Piano lesson (moved)
+DTSTART:20260930T143000Z
+DTEND:20260930T153000Z
+DTSTAMP:20260927T180000Z
+UID:1786ac483382b1eb4a4b@family-brief
+DESCRIPTION:Moved to Wednesday this week\n\n[Parent Recap · Leo]
+LOCATION:Music school
+END:VEVENT
+END:VCALENDAR
+=== 2026-10-01 3B retki to Nuuksio.ics
 BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//FamilyBrief//family-brief//ZH
@@ -12,14 +29,5 @@ UID:1c131076ac733c6f3c87@family-brief
 DESCRIPTION:Class retki\; pack lunch and rain gear (gmail)\n\n[Parent Reca
  p · Mia]
 LOCATION:Nuuksio
-END:VEVENT
-BEGIN:VEVENT
-SUMMARY:Piano lesson (moved)
-DTSTART:20260930T143000Z
-DTEND:20260930T153000Z
-DTSTAMP:20260927T180000Z
-UID:1786ac483382b1eb4a4b@family-brief
-DESCRIPTION:Moved to Wednesday this week\n\n[Parent Recap · Leo]
-LOCATION:Music school
 END:VEVENT
 END:VCALENDAR

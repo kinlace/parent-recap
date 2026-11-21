@@ -34,6 +34,11 @@ class SentEmail:
     def attachment(self, suffix: str) -> tuple[str, bytes, str] | None:
         return next((a for a in self.attachments if a[0].endswith(suffix)), None)
 
+    def calendar(self) -> bytes | None:
+        """Every .ics on the mail, one after another (one per event, #1034), or None."""
+        files = [a[1] for a in self.attachments if a[0].endswith(".ics")]
+        return b"".join(files) if files else None
+
 
 @dataclass
 class Report:

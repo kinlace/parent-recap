@@ -336,7 +336,7 @@ def ics_of_the_evening(harness) -> bytes:
     harness.model_reply = {"per_kid": [], "calendar_events": [], "message_digest": "- A trip and a photo day"}
     assert harness.run() == 0
     [email] = harness.sent
-    _, ics, _ = email.attachment(".ics")
+    ics = email.calendar()
     return ics.replace(b"\r\n ", b"")
 
 

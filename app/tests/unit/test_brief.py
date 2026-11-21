@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import NOW, TZ, html_for_golden, ics_for_golden
+from conftest import NOW, TZ, html_for_golden, ics_files_for_golden, ics_for_golden
 
 from family_brief import render
 from family_brief.actions import archive
@@ -44,7 +44,7 @@ def test_an_old_archive_renders_as_it_did(golden, version):
     golden(f"archive_{version}.zh.txt", mail.text)
     golden(f"archive_{version}.zh.html", html_for_golden(mail.html))
     if events:
-        golden(f"archive_{version}.zh.ics", ics_for_golden(mail.attachments[0][1]))
+        golden(f"archive_{version}.zh.ics", ics_files_for_golden(mail.attachments))
     messages = [Message.from_dict(m) for m in data["messages"]]
     golden(f"archive_{version}.zh.md",
            archive._render_markdown(t, "2026-09-27", brief, data["calendar_created"], messages))

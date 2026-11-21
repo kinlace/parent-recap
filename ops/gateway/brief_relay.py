@@ -70,7 +70,7 @@ DAILY_CAP = 4
 # Its own constant, so the two can be tuned apart.
 ON_REQUEST_DAILY_CAP = 4
 MAX_RECIPIENTS = 10
-MAX_ATTACHMENTS = 5
+MAX_ATTACHMENTS = 20  # the Brief has one .ics per event, up to the app's ics.MAX_FILES
 MAX_REQUEST_BYTES = 2_000_000
 # The unit doesn't restart on this exit: a missing setting won't appear by trying again.
 EX_CONFIG = 78

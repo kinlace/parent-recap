@@ -227,6 +227,13 @@ def ics_for_golden(payload: bytes) -> str:
     return payload.decode("utf-8").replace("\r\n", "\n")
 
 
+def ics_files_for_golden(attachments: list[tuple[str, bytes, str]]) -> str:
+    """A mail's .ics files, one per event (#1034), each under its file name."""
+    files = [(name, payload, mime) for name, payload, mime in attachments if name.endswith(".ics")]
+    assert files and all(mime == "application/ics" for *_, mime in files)
+    return "".join(f"=== {name}\n{ics_for_golden(payload)}" for name, payload, _ in files)
+
+
 # ── The fixtures the harness is composed of
 
 class Processes:

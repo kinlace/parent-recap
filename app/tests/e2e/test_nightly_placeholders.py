@@ -122,7 +122,7 @@ def test_the_brief_calendar_and_archive_get_the_real_contact_details_back(harnes
         assert "+358 9 816 2000" in text
         assert not placeholders_in(text)
     assert f"Retki: sign up at {RETKI_FORM}" in email.text
-    ics = email.attachment(".ics")[1].decode().replace("\r\n ", "")  # unfolded
+    ics = email.calendar().decode().replace("\r\n ", "")  # unfolded
     assert f"DESCRIPTION:Sign up: {RETKI_FORM}\\n" in ics
     # A link is kept in an event only if a message the event cites has it, checked on the real link.
     assert f"DESCRIPTION:Sign up at {SIGNUP} or \\n" in ics
@@ -154,7 +154,7 @@ def test_the_translation_prompt_has_the_same_placeholders_and_the_translation_th
     _zh, en = harness.sent
     assert f"Sign up for the retki at {RETKI_FORM} or call 040 123 4567" in en.text
     assert "Ill? Call the nurse on +358 9 816 2000" in en.html and not placeholders_in(en.html)
-    ics = en.attachment(".ics")[1].decode().replace("\r\n ", "")
+    ics = en.calendar().decode().replace("\r\n ", "")
     assert f"DESCRIPTION:Sign up: {RETKI_FORM}\\n" in ics
     assert f"DESCRIPTION:Sign up at {SIGNUP} or \\n" in ics
 
@@ -210,7 +210,7 @@ def test_a_chinese_brief_gets_its_values_back_and_its_translation_prompt_has_non
     prompt = harness.model_prompt(1)
     for value in CHINESE_DETAILS:
         assert value not in prompt
-    ics = zh.attachment(".ics")[1].decode().replace("\r\n ", "")
+    ics = zh.calendar().decode().replace("\r\n ", "")
     assert f"DESCRIPTION:报名链接：{ILMO}，周五截止\\n" in ics
 
 
@@ -436,7 +436,7 @@ def test_the_brief_calendar_and_archive_get_the_names_back_and_the_translation_p
         assert "Palauta retken lupalappu Maijalle" in email.text
         assert "Eetun synttärit lauantaina" in email.text
         assert not people_in(email.html)
-        ics = email.attachment(".ics")[1].decode().replace("\r\n ", "")
+        ics = email.calendar().decode().replace("\r\n ", "")
         assert "SUMMARY:Eetun synttärit" in ics and "DESCRIPTION:Toivo Mäkelä kiitti Virtanen Maijaa" in ics
     summary = archived_summary(harness)
     assert summary["per_kid"][0]["action_items"][0]["what"] == "Palauta retken lupalappu Maijalle"

@@ -14,7 +14,7 @@ from html import escape
 import pytest
 import time_machine
 
-from conftest import GATEWAY_KEY, NOW, html_for_golden, ics_for_golden, msg, without_unread_note
+from conftest import GATEWAY_KEY, NOW, html_for_golden, ics_files_for_golden, ics_for_golden, msg, without_unread_note
 
 from fake_system import LINUX, WINDOWS
 from family_brief.gateway import GatewayError
@@ -38,9 +38,7 @@ def test_normal_night_matches_golden(harness, golden, language):
     golden(f"normal_night.{language}.txt", email.text)
     golden(f"normal_night.{language}.html", html_for_golden(email.html))
 
-    [(name, payload, mime)] = email.attachments
-    assert (name, mime) == ("parent-recap-2026-09-27.ics", "application/ics")
-    golden(f"normal_night.{language}.ics", ics_for_golden(payload))
+    golden(f"normal_night.{language}.ics", ics_files_for_golden(email.attachments))
 
     [call] = harness.model_calls
     golden(f"normal_night.{language}.masked.model.txt", model_call_for_golden(call))
@@ -323,7 +321,7 @@ def test_event_with_null_title_is_untitled(harness):
     [email] = harness.sent
     assert "• (无标题) — 10月1日 周四 09:00 (Mia)" in email.text
     assert "None" not in email.text + email.html
-    [(_, payload, _)] = email.attachments
+    payload = email.calendar()
     assert "SUMMARY:(无标题)" in ics_for_golden(payload)
     assert "None" not in ics_for_golden(payload)
 
@@ -388,7 +386,7 @@ def test_failed_email_brings_the_whole_night_back_tomorrow(harness):
     assert harness.model_payload()["earlier_briefs"] == []
     [email] = harness.sent
     assert "周四远足" in email.text
-    _, payload, _ = email.attachment(".ics")
+    payload = email.calendar()
     assert payload.count(b"BEGIN:VEVENT") == 2
     assert len(harness.state()["created_event_hashes"]) == 2
 
@@ -523,7 +521,7 @@ def test_lookback_override_is_not_extended(harness):
 def test_sent_ics_events_are_not_sent_again(harness):
     normal_night(harness)
     assert harness.run() == 0
-    assert len(harness.sent[0].attachments) == 1
+    assert harness.sent[0].calendar()
 
     with time_machine.travel(NOW + timedelta(days=1), tick=False):
         assert harness.run() == 0
@@ -571,9 +569,7 @@ def test_dated_exam_and_shortened_day_go_into_the_ics_as_all_day_events(harness,
     assert harness.run() == 0
 
     [email] = harness.sent
-    name, payload, _ = email.attachment(".ics")
-    assert name == "parent-recap-2026-09-27.ics"
-    ics = ics_for_golden(payload)
+    ics = ics_files_for_golden(email.attachments)
     golden("dated_events.zh.ics", ics)
     assert ics.count("[Parent Recap · Mia]") == 2 and "FamilyBrief ·" not in ics
     # The UID keeps its old suffix: a calendar app matches a re-sent event by its UID.
@@ -590,7 +586,7 @@ def test_all_day_event_over_several_days_ends_after_its_last_day(harness):
 
     assert harness.run() == 0
 
-    ics = ics_for_golden(harness.sent[0].attachment(".ics")[1])
+    ics = ics_for_golden(harness.sent[0].calendar())
     assert "DTSTART;VALUE=DATE:20261019" in ics and "DTEND;VALUE=DATE:20261024" in ics
 
 
@@ -618,10 +614,10 @@ def test_all_day_events_stay_all_day_in_a_translated_brief(harness):
     assert harness.run() == 0
 
     zh, en = harness.sent
-    ics = ics_for_golden(en.attachment(".ics")[1])
+    ics = ics_files_for_golden(en.attachments)
     assert "SUMMARY:History exam (koe)\nDTSTART;VALUE=DATE:20261007\nDTEND;VALUE=DATE:20261008" in ics
     # One UID per event whichever language its .ics is in, so a shared calendar gets one entry.
-    assert re.findall(r"UID:.*", ics) == re.findall(r"UID:.*", ics_for_golden(zh.attachment(".ics")[1]))
+    assert re.findall(r"UID:.*", ics) == re.findall(r"UID:.*", ics_files_for_golden(zh.attachments))
     assert "History exam (koe) — Wed 7 Oct" in en.text and "00:00" not in en.text
 
 
@@ -931,7 +927,7 @@ def test_event_obeying_an_injected_message_brings_nothing_its_cited_messages_don
     assert harness.run() == 0
 
     [email] = harness.sent
-    ics = email.attachment(".ics")[1].decode()
+    ics = email.calendar().decode()
     assert "payment meeting" not in ics.lower() and "pay-kilo" not in ics
     assert "Parents' meeting" in ics  # cites a real message, so it stays, without the link
     assert harness.calendar.inserted == []
