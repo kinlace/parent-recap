@@ -117,6 +117,12 @@ class BriefText:
     date_time: str                      # what `date` has, and {hour} {minute}
     new_events: str
     new_events_line: str                # the plain-text heading
+    # The Week Ahead on Sunday's Brief (ADR 0053): its heading, the plain-text one, an event's time,
+    # and the line after a day's first few items
+    week_ahead: str
+    week_ahead_line: str
+    clock: str                          # {hour} {minute}
+    week_more: str                      # {n}
     written_by: str                     # {assistant}
     runs_hosted: str                    # every Brief's footer, from a Hosted Household (#669)
     runs_on_own_computer: str           # every Brief's footer, from the family's own computer
@@ -242,6 +248,10 @@ EN = BriefText(
     date_time="{weekday} {day} {month_name} {hour:02}:{minute:02}",
     new_events="📅 New calendar events",
     new_events_line="📅 New calendar events:",
+    week_ahead="🗓️ This week",
+    week_ahead_line="🗓️ This week:",
+    clock="{hour:02}:{minute:02}",
+    week_more="…and {n} more",
     written_by="Written by {assistant}",
     runs_hosted="Parent Recap hosted version, running on the parentrecap.com server",
     runs_on_own_computer="Parent Recap, running on your own computer",
@@ -337,6 +347,10 @@ ZH = BriefText(
     date_time="{month_name}{day}日 {weekday} {hour:02}:{minute:02}",
     new_events="📅 新日历事件",
     new_events_line="📅 新加日历事件:",
+    week_ahead="🗓️ 本周安排",
+    week_ahead_line="🗓️ 本周安排:",
+    clock="{hour:02}:{minute:02}",
+    week_more="……还有 {n} 项",
     written_by="由 {assistant} 生成",
     runs_hosted="Parent Recap 托管版，在 parentrecap.com 的服务器上运行",
     runs_on_own_computer="Parent Recap，在你家的电脑上运行",
@@ -444,6 +458,10 @@ FI = BriefText(
     date_time="{weekday} {day}.{month}. klo {hour}.{minute:02}",
     new_events="📅 Uudet kalenteritapahtumat",
     new_events_line="📅 Uudet kalenteritapahtumat:",
+    week_ahead="🗓️ Tällä viikolla",
+    week_ahead_line="🗓️ Tällä viikolla:",
+    clock="klo {hour}.{minute:02}",
+    week_more="…ja {n} muuta",
     written_by="Kirjoittanut: {assistant}",
     runs_hosted="Parent Recapin ylläpidetty versio, joka toimii parentrecap.com-palvelimella",
     runs_on_own_computer="Parent Recap, joka toimii omalla tietokoneellasi",

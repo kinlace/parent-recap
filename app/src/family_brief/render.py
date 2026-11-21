@@ -10,7 +10,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal, Union
 from zoneinfo import ZoneInfo
 
-from . import wilma_egress
+from . import week_ahead, wilma_egress
 from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
@@ -281,6 +281,44 @@ def _group_heading(group: str) -> str:
     return f"💬 {group}"
 
 
+def _week_item(item: week_ahead.WeekItem, t: BriefText) -> str:
+    """One line of the Week Ahead: an Action Item after the Action Items' mark, an event after its
+    time when it has one and with its detail, then its Kid."""
+    if item.due:
+        head = f"✅ {item.text}"
+    else:
+        hour, minute = (int(x) for x in item.time.split(":")) if item.time else (None, None)
+        when = t.clock.format(hour=hour, minute=minute) + " " if item.time else ""
+        head = when + " · ".join(x for x in (item.text, item.detail) if x)
+    return head + (f" ({item.kid})" if item.kid else "")
+
+
+def _week_lines(week: list[week_ahead.WeekItem], t: BriefText) -> list[str]:
+    """The plain-text Week Ahead, or nothing when the Brief has none (ADR 0053)."""
+    if not week:
+        return []
+    lines = [t.week_ahead_line]
+    for day, shown, more in week_ahead.by_day(week):
+        lines.append(t.on(day))
+        lines += [f"• {_week_item(i, t)}" for i in shown]
+        if more:
+            lines.append(f"• {t.week_more.format(n=more)}")
+    return lines
+
+
+def _week_html(week: list[week_ahead.WeekItem], t: BriefText) -> str:
+    if not week:
+        return ""
+    parts = [f"<h3>{_h.escape(t.week_ahead)}</h3>"]
+    for day, shown, more in week_ahead.by_day(week):
+        parts.append(f"<h4>{_h.escape(t.on(day))}</h4><ul>")
+        parts += [f"<li>{_h.escape(_week_item(i, t))}</li>" for i in shown]
+        if more:
+            parts.append(f"<li style='color:#666'>{_h.escape(t.week_more.format(n=more))}</li>")
+        parts.append("</ul>")
+    return "".join(parts)
+
+
 # A link in the notes at the top of the Brief, made one in its HTML.
 _LINK = re.compile(r"https://[^\s<]+")
 
@@ -335,6 +373,7 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
             parts.append(f"<li>{head} — {start} {('('+kid+')') if kid else ''}"
                          + (f"<br><small style='color:#666'>{about}</small>" if about else "") + "</li>")
         parts.append("</ul>")
+    parts.append(_week_html(brief.week, t))
     if note:
         parts.append(f"<p style='color:#a33'>{_h.escape(note)}</p>")
     if coverage:
@@ -389,6 +428,8 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
             parts.append(f"• {ev['title']} — {_start(ev['start'], t, tz)}{tag}")
             if about := _place_and_details(ev):
                 parts.append(f"   {about}")
+    if week := _week_lines(brief.week, t):
+        parts += ["", *week]
     return "\n".join(parts)
 
 
@@ -646,7 +687,8 @@ def preview(night: Night) -> dict[str, str | None]:
 
 def nothing_to_show(night: Night) -> bool:
     """Whether tonight's Brief would have only its header and the notes under it: no Digest, or
-    Notices standing in for one, no group digest, Action Items, events or Held-back Messages, and
-    no warning."""
+    Notices standing in for one, no group digest, Action Items, events, Week Ahead or Held-back
+    Messages, and no warning."""
     return not (_shown_digest(night.brief, night.t) or night.brief.groups or _action_items(night.brief) or night.created
+                or night.brief.week
                 or night.held_back or _top_note(night.incomplete, night.t, night.assistant))

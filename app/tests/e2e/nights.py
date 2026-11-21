@@ -153,8 +153,28 @@ def two_languages(h) -> None:
     """The normal night for a Household where the first Recipient reads Chinese and the partner English."""
     normal_night(h)
     h.config["email"]["to"] = ["parent@example.com", PARTNER_EN]
-    # The model writes the Brief in Chinese, then translates it: the same entries in English.
-    h.model_reply = [h.model_reply, copy.deepcopy(ENGLISH_REPLY)]
+    # The model writes the Brief in Chinese, then translates it: the same entries in English, and
+    # the Week Ahead of the Sunday it is (ADR 0053), entry by entry in the order the prompt has them.
+    h.model_reply = [h.model_reply, {**copy.deepcopy(ENGLISH_REPLY), "week_ahead": copy.deepcopy(ENGLISH_WEEK)}]
+
+
+# The normal night's Week Ahead in English: its model-written entries, Monday to Thursday.
+ENGLISH_WEEK = [
+    {"text": "Sign the reissuvihko"},
+    {"text": "Sign the retki permission slip in Wilma"},
+    {"text": "Piano lesson (moved)", "description": "Moved to Wednesday this week"},
+    {"text": "Get Leo's photo-day clothes ready <neat>"},
+    {"text": "3B retki to Nuuksio", "description": "Class retki; pack lunch and rain gear (gmail)"},
+]
+
+# The same Week Ahead in Chinese, as the normal night's Chinese reply words it.
+CHINESE_WEEK = [
+    {"text": "签 reissuvihko"},
+    {"text": "在 Wilma 签远足同意书"},
+    {"text": "钢琴课（改期）", "description": "本周改到周三"},
+    {"text": "给 Leo 准备拍照穿的衣服 <整洁>"},
+    {"text": "3B 远足 Nuuksio", "description": "班级远足，带午餐和雨衣（gmail）"},
+]
 
 
 def placeholders_in(text: str) -> list[str]:
