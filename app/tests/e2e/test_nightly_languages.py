@@ -11,7 +11,7 @@ import pytest
 
 from conftest import html_for_golden, ics_files_for_golden, ics_for_golden
 
-from nights import ENGLISH_REPLY, PARTNER_EN, archived_summary, model_call_for_golden, normal_night, two_languages
+from nights import CHINESE_WEEK, ENGLISH_REPLY, PARTNER_EN, archived_summary, model_call_for_golden, normal_night, two_languages
 
 
 # ── Recipients in their own language
@@ -193,7 +193,7 @@ def test_the_model_writes_in_the_first_recipients_language(harness, golden):
     chinese_reply = harness.model_reply
     harness.config["email"]["to"] = [{"address": "parent@example.com", "language": "en"},
                                      "partner@example.com"]
-    harness.model_reply = [copy.deepcopy(ENGLISH_REPLY), chinese_reply]
+    harness.model_reply = [copy.deepcopy(ENGLISH_REPLY), {**chinese_reply, "week_ahead": CHINESE_WEEK}]
 
     assert harness.run() == 0
 

@@ -75,6 +75,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_status_lines.py`        | The hosted status: an overdue run, a Household's line, its keys  |
 | `test_summarize_normalise.py` | The model's reply put in the schema's shape                      |
 | `test_system_profile.py`      | The systems' profiles; only `system/` checks the system          |
+| `test_week_ahead.py`          | The Week Ahead's items: Sundays only, each thing once, in day order (ADR 0053) |
 | `test_weekend_pipeline.py`    | The pure parts of Weekend Picks                                  |
 | `test_whatsapp_hints.py`      | The Kid hint on each WhatsApp group the check page lists         |
 
@@ -130,6 +131,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_nightly_google_calendar.py` | Google Calendar mode                                                                    |
 | `test_nightly_languages.py`       | Recipients in their own languages                                                       |
 | `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                                     |
+| `test_nightly_week_ahead.py`      | Sunday's Week Ahead: no model call, each thing once, only Sundays, translated (ADR 0053) |
 | `test_nightly_held_back.py`       | Held-back Messages, end to end (ADR 0013)                                               |
 | `test_nightly_new_source.py`      | A Source added only to the registry is read, counted, caught up                         |
 | `test_any_language.py`            | A Recipient in a language without reviewed program text (ADR 0004)                      |

@@ -6,7 +6,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import html
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -16,7 +16,7 @@ from conftest import NOW, TZ, html_for_golden, ics_files_for_golden, ics_for_gol
 from fake_system import LINUX
 from nights import ENGLISH_REPLY, normal_night
 
-from family_brief import render, update
+from family_brief import render, update, week_ahead
 from family_brief.brief import Brief, parse
 from family_brief.brief_text import TEXT, BriefText, recommend_link
 from family_brief.actions import ics as ics_action
@@ -31,7 +31,8 @@ COVERAGE = {"gmail": {"count": 2, "error": None}, "myclub": {"count": 1, "error"
 
 
 def written(reply: dict, sources: dict[str, str]) -> Brief:
-    """`reply` as the run hands it on: each Action Item and event with the Sources its refs cite."""
+    """`reply` as the run hands it on: each Action Item and event with the Sources its refs cite,
+    and, since the golden nights are a Sunday's, the Week Ahead made from it (ADR 0053)."""
     brief = parse(copy.deepcopy(reply))
     for kid in brief.kids:
         for a in kid.action_items:
@@ -39,6 +40,10 @@ def written(reply: dict, sources: dict[str, str]) -> Brief:
     for ev in brief.events:
         assert ev.refs
         ev.external_id, ev.source = ev.refs[0], sources[ev.refs[0]]
+    events = lambda b: extract_calendar_events(b, TZ, "")  # noqa: E731
+    brief.week = week_ahead.items(week_ahead.week_after(date.fromisoformat(DATE)), [], brief, events(brief), [],
+                                  kid_called=lambda kid: kid, household=[t.household for t in TEXT.values()],
+                                  reminders=[], model_events=events)
     return brief
 
 
