@@ -26,7 +26,7 @@ _Avoid_: alert, info, 通知
 Something a parent must do, with an absolute due date and an optional assignee. An event or schedule change is not an Action Item by itself, since getting the Kid there is implied; only something beyond showing up is (bring, pay, sign, reply, or arrange something unusual).
 _Avoid_: task, todo, 家长要做的事
 
-**Week Ahead** (zh 本周安排, fi tällä viikolla):
+**Week Ahead** (zh 下周安排, fi ensi viikolla):
 The section of Sunday's Brief that lists, day by day, the Action Items due and the calendar events known for the coming Monday to Friday. The program makes it from the archive, tonight's Brief and tonight's Source events, without the model, and lists each thing once (ADR 0053).
 _Avoid_: weekly digest, week view, 周报
 
