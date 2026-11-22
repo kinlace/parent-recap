@@ -57,7 +57,7 @@ def test_a_quiet_sunday_sends_its_week_ahead_without_asking_the_model(harness, g
 
     assert harness.model_calls == []
     [email] = harness.sent
-    golden("week_ahead.zh.txt", week_part(email.text, "🗓️ 本周安排:"))
+    golden("week_ahead.zh.txt", week_part(email.text, "🗓️ 下周安排:"))
     # Due Friday once, though two evenings told it.
     assert email.text.count("远足的事") == 1
 
@@ -88,7 +88,7 @@ def test_an_archived_exam_and_tonights_wilma_exam_show_once_as_wilma_has_it(harn
     assert harness.run() == 0
 
     [email] = harness.sent
-    week = week_part(email.text, "🗓️ 本周安排:")
+    week = week_part(email.text, "🗓️ 下周安排:")
     assert "Koe: Historia – Luvut 3–5" in week
     assert "历史考试" not in week
     assert week.count("(Mia)") == 2  # the exam and the reply
@@ -102,7 +102,7 @@ def test_a_moved_wilma_exam_shows_on_its_new_day(harness):
 
     assert harness.run() == 0
 
-    week = week_part(harness.sent[0].text, "🗓️ 本周安排:")
+    week = week_part(harness.sent[0].text, "🗓️ 下周安排:")
     assert week.splitlines()[1:] == ["9月30日 周三", "• Koe: Historia – Luvut 3–5 · Kirjan luvut 3–5 (Mia)"]
 
 
@@ -122,5 +122,5 @@ def test_the_week_is_translated_in_the_translation_call_with_earlier_people_as_p
     assert "week_ahead" in call.system_prompt
     assert TEACHER not in call.prompt and "maija.laine" not in call.prompt
     zh, en = harness.sent
-    assert f"EN: 回复 {TEACHER} 远足的事 (Mia)" in week_part(en.text, "🗓️ This week:")
-    assert f"• ✅ 回复 {TEACHER} 远足的事 (Mia)" in week_part(zh.text, "🗓️ 本周安排:")
+    assert f"EN: 回复 {TEACHER} 远足的事 (Mia)" in week_part(en.text, "🗓️ Next week:")
+    assert f"• ✅ 回复 {TEACHER} 远足的事 (Mia)" in week_part(zh.text, "🗓️ 下周安排:")
