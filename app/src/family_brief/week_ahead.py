@@ -1,4 +1,4 @@
-"""The Week Ahead: the "Next week" section of Sunday's evening Brief (#1037, ADR 0053).
+"""The Week Ahead: the section of Sunday's evening Brief (#1037, ADR 0053).
 
 It lists, day by day, what is already known for the coming Monday to Friday: the Action Items due
 on each day and the calendar events on it, exams and changed school hours among them. Nothing here
