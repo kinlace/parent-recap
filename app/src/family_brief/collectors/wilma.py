@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
-from .. import own_node, wilma_egress
+from .. import own_node, school_hours, wilma_egress
 from ..config import Config, Kid
 from ..state import State
 from .base import CalendarEvent, Collected, Message, retry_once_on_timeout, sign_in_failed, unreadable
@@ -337,17 +337,26 @@ def _collect_list(state: State, source_tag: str,
 
 # Model input, so English whatever the Brief's language; the summarize prompt explains the header.
 _WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+_WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def _collect_schedule(state: State, wilmas: _Wilmas | None = None) -> list[Message]:
-    """Next-school-day schedule as a synthetic Message per run.
+# How much of the timetable the one `schedule` call reads, around today: two weeks back and two
+# ahead, 28 days within the CLI's 31, so each weekday has three other days to say its usual
+# school hours from (ADR 0054). The model gets only the next school day's lessons.
+SCHEDULE_DAYS_BACK = 14
+SCHEDULE_DAYS_AHEAD = 13
 
-    IMPORTANT: `wilma schedule --when tomorrow` on Fri/Sat/Sun skips ahead to the
-    next actual school day (usually Monday). We must therefore label the message
-    with the concrete ISO date the returned lessons *actually* fall on, so the LLM
-    doesn't treat "tomorrow" literally.
-    """
-    payload = _run_or_log(["schedule", "list", "--all-students", "--when", "tomorrow"])
+
+def _collect_schedule(state: State, wilmas: _Wilmas | None = None, kids: list[Kid] | None = None) -> list[Message]:
+    """The next school day's timetable as one Message per evening: the first day after today with
+    lessons, which on a Friday or before a holiday is not tomorrow, so its header says its date.
+    Under each Kid's lessons it gives their usual hours on that weekday, and the metadata holds the
+    hours that differ from them, which the Brief shows in the program's words (ADR 0054)."""
+    from datetime import date as _date, datetime as _dt
+    today = _dt.now().astimezone().date()
+    payload = _run_or_log(["schedule", "list", "--all-students",
+                           "--from", (today - timedelta(days=SCHEDULE_DAYS_BACK)).isoformat(),
+                           "--to", (today + timedelta(days=SCHEDULE_DAYS_AHEAD)).isoformat()])
     if payload is None:
         return []
     if isinstance(payload, dict):
@@ -357,63 +366,61 @@ def _collect_schedule(state: State, wilmas: _Wilmas | None = None) -> list[Messa
     if state.has_seen_message("wilma", sched_ext_id):
         return []
 
-    # Group lessons by their actual date (per-student), so LLM sees which day these belong to.
-    from collections import defaultdict
-    by_date_student: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    # Each student's lessons, by their date; then the first day after today any of them has.
+    students: list[tuple[str, list[dict]]] = []
     for student, items in _walk_students(payload):
-        student_name = student.get("name", "?")
-        for it in items:
-            actual_date = _first(it, "date", default="") or ""
+        lessons = [it for it in items if isinstance(it, dict)]
+        students.append((student.get("name") or "?", lessons))
+    dates = {str(_first(it, "date", default="")) for _, lessons in students for it in lessons}
+    ahead = sorted(d for d in dates if _is_after(d, today))
+    if not ahead:
+        return []
+    day = _date.fromisoformat(ahead[0])
+
+    days_ahead = (day - today).days
+    rel = {1: "tomorrow", 2: "day after tomorrow"}.get(days_ahead, f"in {days_ahead} days")
+    lines = [f"[{day.isoformat()} {_WEEKDAYS[day.weekday()]} · {rel}]"]
+    changed: list[dict] = []
+    for student_name, lessons in students:
+        on_day = [it for it in lessons if str(_first(it, "date", default="")) == day.isoformat()]
+        if not on_day:
+            continue
+        lines.append(f"— {student_name} —")
+        for it in on_day:
             start = _first(it, "start", "startTime", "time", default="")
             end = _first(it, "end", "endTime", default="")
             subj = _first(it, "subject", "course", "title", "name", default="")
             loc = _first(it, "room", "location", "classroom", default="")
-            line = (f"  {start}{'–' + end if end else ''}  {subj}"
-                    + (f"  @ {loc}" if loc else ""))
-            by_date_student[actual_date][student_name].append(line)
+            lines.append(f"  {start}{'–' + end if end else ''}  {subj}" + (f"  @ {loc}" if loc else ""))
+        hours = school_hours.day_hours((_first(it, "date", default=""), _first(it, "start", "startTime", "time"),
+                                        _first(it, "end", "endTime")) for it in lessons)
+        if normally := school_hours.usual(hours, day):
+            lines.append(f"  Usual hours on {_WEEKDAY_NAMES[day.weekday()]}s: {normally[0]}–{normally[1]}")
+        if differs := school_hours.changed(_kid_of(student_name, kids or []), hours, day):
+            changed.append(differs.to_dict())
+    lines.append("")
 
-    if not by_date_student:
-        return []
-
-    # Compute "today" locally so weekday labels are correct.
-    from datetime import date as _date, datetime as _dt
-    today_local = _dt.now().astimezone().date()
-
-    lines: list[str] = []
-    for iso_date in sorted(by_date_student):
-        try:
-            d = _date.fromisoformat(iso_date)
-            days_ahead = (d - today_local).days
-            if days_ahead == 0:
-                rel = "today"
-            elif days_ahead == 1:
-                rel = "tomorrow"
-            elif days_ahead == 2:
-                rel = "day after tomorrow"
-            else:
-                rel = f"in {days_ahead} days"
-            weekday = _WEEKDAYS[d.weekday()]
-            header = f"[{iso_date} {weekday} · {rel}]"
-        except ValueError:
-            header = f"[{iso_date}]"
-        lines.append(header)
-        for student_name, entries in by_date_student[iso_date].items():
-            lines.append(f"— {student_name} —")
-            lines.extend(entries)
-        lines.append("")
-
-    first_iso = sorted(by_date_student.keys())[0] if by_date_student else "?"
     state.mark_message_seen("wilma", sched_ext_id)
+    metadata: dict[str, Any] = {"wilma_kind": "schedule_next_school_day", "first_date": day.isoformat()}
+    if changed:
+        metadata[school_hours.KEY] = changed
     return [Message(
         source="wilma",
         external_id=sched_ext_id,
         timestamp=now,
-        subject=f"Timetable for the next school day (from {first_iso})",
+        subject=f"Timetable for the next school day (from {day.isoformat()})",
         body="\n".join(lines)[:MAX_BODY_CHARS],
         chat_name="schedule",
-        metadata={"wilma_kind": "schedule_next_school_day",
-                  "first_date": first_iso},
+        metadata=metadata,
     )]
+
+
+def _is_after(iso: str, today: Any) -> bool:
+    from datetime import date as _date
+    try:
+        return _date.fromisoformat(iso) > today
+    except ValueError:
+        return False
 
 
 # How far ahead an exam reaches the Brief and the calendar: four weeks, as teachers add them (#773).
@@ -660,7 +667,7 @@ def _collect(cfg: Config, state: State) -> Collected:
         cutoff=cutoff - timedelta(days=1),
         wilmas=wilmas,
     )
-    schedule = _collect_schedule(state, wilmas)
+    schedule = _collect_schedule(state, wilmas, cfg.kids)
     exams, exam_events = _collect_exams(state, wilmas, cfg.kids, cfg.timezone)
     notes = _collect_notes(state, wilmas)
     return Collected(messages=[*msgs, *news, *schedule, *exams, *notes], events=exam_events)

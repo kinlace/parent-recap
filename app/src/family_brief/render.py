@@ -293,6 +293,15 @@ def _week_item(item: week_ahead.WeekItem, t: BriefText) -> str:
     return head + (f" ({item.kid})" if item.kid else "")
 
 
+def _school_lines(brief: Brief, t: BriefText) -> list[str]:
+    """Each Kid's next school day whose hours differ from the usual ones, in the program's words
+    (ADR 0054), or nothing."""
+    def hours(start: str, end: str) -> str:
+        return "–".join(t.school_time.format(hour=int(x[:2]), minute=int(x[3:])) for x in (start, end))
+    return [t.school_hours.format(kid=h.kid or "", date=t.on(h.day), hours=hours(h.start, h.end),
+                                  usual=hours(h.usual_start, h.usual_end)) for h in brief.school_hours]
+
+
 def _week_lines(week: list[week_ahead.WeekItem], t: BriefText) -> list[str]:
     """The plain-text Week Ahead, or nothing when the Brief has none (ADR 0053)."""
     if not week:
@@ -339,6 +348,8 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
     digest = _shown_digest(brief, t)
     if digest:
         parts.append(_digest_html(digest))
+    if school := _school_lines(brief, t):
+        parts.append("<p>" + "<br>".join(_h.escape(line) for line in school) + "</p>")
     for g in brief.groups:
         parts.append(f"<h3>{_h.escape(_group_heading(g.group))}</h3>" + _digest_html(g.text))
     if held_back:
@@ -413,6 +424,8 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
     digest = _shown_digest(brief, t)
     if digest:
         parts += ["", digest]
+    if school := _school_lines(brief, t):
+        parts += ["", *school]
     for g in brief.groups:
         parts += ["", _group_heading(g.group), g.text]
     if held_back:
@@ -687,8 +700,8 @@ def preview(night: Night) -> dict[str, str | None]:
 
 def nothing_to_show(night: Night) -> bool:
     """Whether tonight's Brief would have only its header and the notes under it: no Digest, or
-    Notices standing in for one, no group digest, Action Items, events, Week Ahead or Held-back
-    Messages, and no warning."""
+    Notices standing in for one, no group digest, changed school hours, Action Items, events, Week
+    Ahead or Held-back Messages, and no warning."""
     return not (_shown_digest(night.brief, night.t) or night.brief.groups or _action_items(night.brief) or night.created
-                or night.brief.week
+                or night.brief.week or night.brief.school_hours
                 or night.held_back or _top_note(night.incomplete, night.t, night.assistant))
