@@ -123,6 +123,10 @@ class BriefText:
     week_ahead_line: str
     clock: str                          # {hour} {minute}
     week_more: str                      # {n}
+    # A Kid's next school day when its hours differ from the usual ones (ADR 0054): {kid}, {date}
+    # as `on` writes it, {hours} and {usual}, each two `school_time`s with a dash
+    school_hours: str
+    school_time: str                    # {hour} {minute}
     written_by: str                     # {assistant}
     runs_hosted: str                    # every Brief's footer, from a Hosted Household (#669)
     runs_on_own_computer: str           # every Brief's footer, from the family's own computer
@@ -252,6 +256,8 @@ EN = BriefText(
     week_ahead_line="🗓️ This week:",
     clock="{hour:02}:{minute:02}",
     week_more="…and {n} more",
+    school_hours="🕒 {kid}, {date}: {hours} (normally {usual})",
+    school_time="{hour}:{minute:02}",
     written_by="Written by {assistant}",
     runs_hosted="Parent Recap hosted version, running on the parentrecap.com server",
     runs_on_own_computer="Parent Recap, running on your own computer",
@@ -351,6 +357,8 @@ ZH = BriefText(
     week_ahead_line="🗓️ 本周安排:",
     clock="{hour:02}:{minute:02}",
     week_more="……还有 {n} 项",
+    school_hours="🕒 {kid} {date}：{hours}（平时 {usual}）",
+    school_time="{hour}:{minute:02}",
     written_by="由 {assistant} 生成",
     runs_hosted="Parent Recap 托管版，在 parentrecap.com 的服务器上运行",
     runs_on_own_computer="Parent Recap，在你家的电脑上运行",
@@ -462,6 +470,8 @@ FI = BriefText(
     week_ahead_line="🗓️ Tällä viikolla:",
     clock="klo {hour}.{minute:02}",
     week_more="…ja {n} muuta",
+    school_hours="🕒 {kid} {date}: {hours} (yleensä {usual})",
+    school_time="{hour}.{minute:02}",
     written_by="Kirjoittanut: {assistant}",
     runs_hosted="Parent Recapin ylläpidetty versio, joka toimii parentrecap.com-palvelimella",
     runs_on_own_computer="Parent Recap, joka toimii omalla tietokoneellasi",

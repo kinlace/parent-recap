@@ -69,6 +69,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_per_language.py`        | The Brief's and Weekend Picks' versions, one per language        |
 | `test_render.py`              | Each golden night's Brief rendered, against its golden files     |
 | `test_run_plan.py`            | Quiet nights, dry runs and the preview: what tonight's run does  |
+| `test_school_hours.py`        | A Kid's usual school hours per weekday, a day that differs, the Brief's line (ADR 0054) |
 | `test_sources.py`             | The Source registry's records, and the Sources a Household uses  |
 | `test_source_folders.py`      | Shared code names a Source's folder only where it lists the Sources (ADR 0051), and reaches it elsewhere through its record |
 | `test_schoolsoft_reads_and_redaction.py` | The SchoolSoft capture tool: every request a read, made-up samples redacted, its text |
@@ -140,7 +141,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_gmail_sends.py`             | The Brief from the Household's own Gmail (ADR 0034): run, doctor, `setup sending`, page |
 | `test_send_key_on_request.py`     | A send-only key on request (ADR 0033): setup page, `setup confirm`, doctor, the run     |
 | `test_source_failures.py`         | A Source's transport failing partway or timing out                                      |
-| `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON, exams in the calendar |
+| `test_wilma_source.py`            | The Wilma Source against a fake wilma CLI printing 2.x's JSON, exams in the calendar, changed school hours |
 | `test_wilma_signins.py`           | Wilma passwords in the keychain by the CLI, older sign-ins moved, doctor's report (#849) |
 | `test_wilma_egress.py`            | The hosted server's Wilma calls through the Finnish egress, direct when it's down (ADR 0046) |
 | `test_eepos_source.py`            | Eepos lessons in the Brief, a wrong password or a changed portal, two schools (#755)    |

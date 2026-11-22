@@ -7,7 +7,7 @@ Families know the product as Parent Recap, made by Kinlace: the plugin is `paren
 ## Output
 
 **Brief** (zh 日报, fi kooste):
-The daily message sent to a Household, containing the Digest, Notices, Action Items, new calendar events and any Group Digests, and on a Sunday the Week Ahead. There is one Brief per night; each Recipient receives it in their own language, with the same content.
+The daily message sent to a Household, containing the Digest, Notices, Action Items, new calendar events and any Group Digests, a Kid's Changed School Hours, and on a Sunday the Week Ahead. There is one Brief per night; each Recipient receives it in their own language, with the same content.
 _Avoid_: report, newsletter, daily digest, 家庭简报
 
 **Digest** (zh 摘要, fi yhteenveto):
@@ -29,6 +29,10 @@ _Avoid_: task, todo, 家长要做的事
 **Week Ahead** (zh 本周安排, fi tällä viikolla):
 The section of Sunday's Brief that lists, day by day, the Action Items due and the calendar events known for the coming Monday to Friday. The program makes it from the archive, tonight's Brief and tonight's Source events, without the model, and lists each thing once (ADR 0053).
 _Avoid_: weekly digest, week view, 周报
+
+**Changed School Hours** (zh 上学时间变动, fi poikkeava koulupäivä):
+A line in the Brief when a Kid's next school day starts or ends at another time than usual on that weekday, with both: the day's hours and the usual ones. The program works out the usual hours from four weeks of Wilma's timetable and writes the line itself; when the model already gave them, perhaps from a message, which beats the timetable, the line is left out (ADR 0054).
+_Avoid_: schedule change, short day alert, 课表变化
 
 **Weekend Picks** (zh 周末活动推荐, fi viikonlopun vinkit):
 The separate Friday message recommending local family events for the weekend; not part of the Brief.

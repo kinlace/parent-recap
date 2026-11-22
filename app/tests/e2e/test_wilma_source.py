@@ -3,8 +3,9 @@ Parent Recap's own Node: a message's text, its sender and how many people it is 
 their text, and the CLI's errors. From 2.0 the CLI signs in with every profile in its config, so a
 Household can have two Wilmas, whose ids are unique only within each. A CLI kept from before 2.0,
 when an update couldn't install the new one, is still read. Each upcoming exam goes into the
-calendar once, and a moved one replaces itself there (ADR 0040). All names, Wilmas and messages are
-made up."""
+calendar once, and a moved one replaces itself there (ADR 0040). A school day whose hours differ
+from the usual ones shows them beside each other, unless the model gave them (ADR 0054). All
+names, Wilmas and messages are made up."""
 from __future__ import annotations
 
 import json
@@ -464,3 +465,72 @@ def test_in_google_mode_a_moved_exam_is_moved_not_written_again(harness, cli):
     [exam] = harness.calendar.inserted
     assert (exam["summary"], exam["start"], exam["end"]) == \
         ("Koe: Historia – Luvut 3–5", {"date": "2026-10-23"}, {"date": "2026-10-24"})
+
+
+# ── A Kid's school hours when they differ from the usual ones (#1036, ADR 0054)
+
+def timetable(short_day: str | None = None) -> dict[str, Any]:
+    """`schedule list` over the four weeks the evening reads, as 2.x prints it: Mia's school days
+    from 08:15 to 14:00, but `short_day` ends at 12:00."""
+    from datetime import date
+    lessons = []
+    for n in range(28):
+        day = (date(2026, 9, 13) + timedelta(days=n)).isoformat()
+        if (date(2026, 9, 13) + timedelta(days=n)).weekday() < 5:
+            lessons += [{"date": day, "start": "08:15", "end": "09:45", "subject": "Historia",
+                         "teacher": "Laine Maija", "room": "204"},
+                        {"date": day, "start": "10:00", "end": "12:00" if day == short_day else "14:00",
+                         "subject": "Liikunta", "teacher": "Laine Maija", "room": "sali"}]
+    return {"students": [{"student": STUDENT, "lessons": lessons}]}
+
+
+def timetable_message(harness) -> dict[str, Any]:
+    [message] = [m for m in harness.model_payload()["messages"] if m["chat_name"] == "schedule"]
+    return message
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_a_school_day_that_ends_early_shows_the_usual_hours_beside_it(harness, cli, golden, language):
+    harness.config["summary_language"] = language
+    cli.answers = {("schedule", "list"): timetable("2026-09-28")}
+    harness.model_reply = {"per_kid": [], "calendar_events": [],
+                           "message_digest": "**Mia**\n- Liikunta in the sali tomorrow: bring PE clothes"}
+
+    assert harness.run() == 0
+
+    # One call reads two weeks back and two ahead.
+    assert ["schedule", "list", "--all-students", "--from", "2026-09-13", "--to", "2026-10-10"] in cli.ran
+    # The model gets only tomorrow's lessons, with Mia's usual Monday, and not the program's own
+    # line; Mia as Kid A, through the same AI filter as the rest (ADR 0013).
+    body = timetable_message(harness)["body"]
+    assert body.splitlines() == ["[2026-09-28 Mon · tomorrow]", "— Virtanen Kid A —",
+                                 "  08:15–09:45  Historia  @ 204", "  10:00–12:00  Liikunta  @ sali",
+                                 "  Usual hours on Mondays: 08:15–14:00"]
+    assert "school_hours" not in harness.model_prompt()
+    [email] = harness.sent
+    golden(f"school_hours.{language}.txt", email.text)
+    line = {"en": "🕒 Mia, Mon 28 Sep: 8:15–12:00 (normally 8:15–14:00)",
+            "zh": "🕒 Mia 9月28日 周一：8:15–12:00（平时 8:15–14:00）"}[language]
+    assert line in email.text and line in email.html
+
+
+def test_a_school_day_with_its_usual_hours_shows_none(harness, cli):
+    cli.answers = {("schedule", "list"): timetable()}
+
+    assert harness.run() == 0
+
+    assert "Usual hours on Mondays: 08:15–14:00" in timetable_message(harness)["body"]
+    assert "🕒" not in harness.sent[0].text
+
+
+def test_a_message_about_the_day_s_hours_beats_the_timetable(harness, cli):
+    """The school's message says Monday ends at 11:00; the model gives it with the usual hours,
+    so the Brief doesn't also show the timetable's 12:00."""
+    cli.answers = {("schedule", "list"): timetable("2026-09-28")}
+    harness.model_reply = {"per_kid": [], "calendar_events": [],
+                           "message_digest": "**Mia**\n- Mon 28 Sep: school ends at 11:00 (normally 8:15–14:00)"}
+
+    assert harness.run() == 0
+
+    assert "🕒" not in harness.sent[0].text
+    assert "school ends at 11:00 (normally 8:15–14:00)" in harness.sent[0].text

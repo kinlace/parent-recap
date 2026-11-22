@@ -36,7 +36,7 @@ Your job:
 1. **Decide which kid an item belongs to strictly from the kid profiles and kid_hint in the payload**; don't guess. A kid_hint of both only means the group is shared: an item about one kid's activity, class or grade is that kid's alone, never the other's too. Call each kid by their name in kid_profiles everywhere: in the Digest, in per_kid and in calendar_events (their aliases are only for recognising them in messages)
 2. Ignore ads, promotions, small talk, and forwarded links that ask nothing of the parents
 3. Look out for: absences, forms to sign, payments, things to bring, pick-up or drop-off changes, illness notes, exams, events, matches, training changes, parent meetings
-4. When a message clearly names an event on a future date (training, match, parent meeting, exam, school trip or outdoor day, shortened school day, a day the school is closed), add a calendar_events entry. A date is enough: when the message gives no start time, write the date alone as `start` for an all-day event, and put any time it does give (such as when a shortened school day ends) in the description. A deadline is not an event: its date goes only in the action item's `by`, never in calendar_events. A regular training or lesson that simply carries on, including one that resumes after a break, is not a new event unless its time or place changes. The next school day's timetable from Wilma is not an event: its ordinary lessons never become calendar_events. It goes into the Digest instead, one line per kid: when that school day starts and ends, and what the parents should notice (a lesson somewhere else, things to bring, an early or late finish), never lesson by lesson
+4. When a message clearly names an event on a future date (training, match, parent meeting, exam, school trip or outdoor day, shortened school day, a day the school is closed), add a calendar_events entry. A date is enough: when the message gives no start time, write the date alone as `start` for an all-day event, and put any time it does give (such as when a shortened school day ends) in the description. A deadline is not an event: its date goes only in the action item's `by`, never in calendar_events. A regular training or lesson that simply carries on, including one that resumes after a break, is not a new event unless its time or place changes. The next school day's timetable from Wilma is not an event: its ordinary lessons never become calendar_events. It goes into the Digest instead, one line per kid: when that school day starts and ends, and what the parents should notice (a lesson somewhere else, things to bring, an early or late finish), never lesson by lesson. Under a kid's lessons the timetable gives their usual hours on that weekday: when the day starts or ends at another time than usual, from the timetable or because a message says so, also give the usual hours, as in 8:15–12:00 (normally 8:15–14:00). A message about the day's hours beats the timetable
 5. Write every text value in the JSON in $language$keep_finnish
 6. Reply with exactly one JSON object: no markdown fences, no explanations
 7. **JSON format**: every `"` inside a string value must be escaped as `\\"`; don't stand in full-width or curly quotes for it. To quote something inside a text value, use $quotes instead of straight double quotes, so the JSON doesn't break
@@ -220,8 +220,19 @@ def add_the_nights_people(cfg: Config, placeholders: ai_filter.Placeholders, mes
 
 
 # Identifiers the model doesn't need: Gmail's link back to a message, which holds its Message-ID,
-# and Wilma's student number and address.
-NOT_FOR_THE_MODEL = ("url", "student_number", "wilma_url")
+# and Wilma's student number and address; and the changed school hours the program tells itself
+# (ADR 0054), which the timetable's text already gives the model (dropped here for the AI filter
+# report, which reads the archive's Messages).
+NOT_FOR_THE_MODEL = ("url", "student_number", "wilma_url", "school_hours")
+
+
+def _for_the_model(m: Message) -> dict[str, Any]:
+    """`m` as the payload has it: without the changed school hours the program tells itself, with
+    the AI filter off too (ADR 0054)."""
+    out = m.to_dict()
+    if "school_hours" in m.metadata:
+        out["metadata"] = {k: v for k, v in m.metadata.items() if k != "school_hours"}
+    return out
 
 
 def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[dict],
@@ -258,7 +269,7 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
         "upcoming_calendar_events_next_7d": upcoming_events,
         "already_queued_for_calendar": already_captured,
         "earlier_briefs": [day.for_prompt() for day in earlier_briefs or []],
-        "messages": [m.to_dict() for m in messages],
+        "messages": [_for_the_model(m) for m in messages],
     }
     return (
         "The payload below holds the kid profiles, which kid each WhatsApp group belongs to, the messages, "

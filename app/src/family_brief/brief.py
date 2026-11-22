@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Union
 
 if TYPE_CHECKING:
+    from .school_hours import SchoolHours
     from .week_ahead import WeekItem
 
 log = logging.getLogger(__name__)
@@ -91,6 +92,10 @@ class Brief:
     # The Week Ahead, which the program adds to Sunday's Brief from what it already has (ADR 0053):
     # never the model's to write, and not archived, since the archive is what it is made from.
     week: list[WeekItem] = field(default_factory=list)
+    # The Kids' school hours on the next school day that differ from their usual ones, which the
+    # program adds from Wilma's timetable when the model didn't give them (ADR 0054): never the
+    # model's to write, and not archived, as the Week Ahead.
+    school_hours: list[SchoolHours] = field(default_factory=list)
 
     def entries(self) -> Iterator[Entry]:
         """Every Notice and Action Item, Kid by Kid."""

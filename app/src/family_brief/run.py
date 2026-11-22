@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 from zoneinfo import ZoneInfo
 
-from . import (ai_filter, gateway, languages, last_run, llm, private_files, render, run_report, slept,
-               week_ahead, wilma_egress)
+from . import (ai_filter, gateway, languages, last_run, llm, private_files, render, run_report,
+               school_hours, slept, week_ahead, wilma_egress)
 from . import sources as source_registry
 from .actions import archive, calendar as calendar_action, email as email_action, imessage
 from .brief import Brief, EarlierBrief, RunNotes
@@ -513,6 +513,8 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
     notes.coverage = read.coverage  # kept in the archive for later checks
     if held:  # the messages in the archive that the AI never saw
         notes.held_back = [m.external_id for m in held]
+    # The Kids' changed school hours from Wilma's timetable, unless the model gave them (ADR 0054).
+    brief.school_hours = school_hours.to_tell(read.messages, brief, cfg.kid_called)
     model_events = extract_calendar_events(brief, cfg.timezone, t.untitled)
     if read.week_days:
         brief.week = _week(cfg, read, brief, model_events)
@@ -588,6 +590,7 @@ def _versions(cfg: Config, written: _Written) -> list[render.Version]:
             assert error is not None
             fallback = _fallback_brief(written.for_ai, error, t, cfg, written.night.slept)
             fallback.week = brief.week  # as written: the model that would translate it is down
+            fallback.school_hours = brief.school_hours
             return render.Version(t, to, fallback)
         events = extract_calendar_events(translated, cfg.timezone, t.untitled)
         return render.Version(t, to, translated, {

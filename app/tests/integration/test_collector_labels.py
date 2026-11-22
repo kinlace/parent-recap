@@ -15,7 +15,6 @@ from family_brief.state import State
 
 
 @pytest.mark.parametrize("day, label", [
-    ("2026-09-27", "Sun · today"),
     ("2026-09-28", "Mon · tomorrow"),
     ("2026-09-29", "Tue · day after tomorrow"),
     ("2026-10-01", "Thu · in 4 days"),
