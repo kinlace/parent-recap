@@ -130,9 +130,8 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_setup_run_report.py`       | The setup page's switch for it (#927): on through the gateway, asked when own-Gmail sending is turned on, kept once set, none for a Hosted Household; its words, and manage's row |
 | `test_nightly_google_calendar.py` | Google Calendar mode                                                                    |
 | `test_nightly_languages.py`       | Recipients in their own languages                                                       |
-| `test_nightly_placeholders.py`    | The AI filter's placeholders, end to end (ADR 0013)                                     |
+| `test_nightly_placeholders.py`, `test_nightly_held_back.py` | The AI filter end to end: placeholders and Held-back Messages (ADR 0013) |
 | `test_nightly_week_ahead.py`      | Sunday's Week Ahead: no model call, each thing once, only Sundays, translated (ADR 0053) |
-| `test_nightly_held_back.py`       | Held-back Messages, end to end (ADR 0013)                                               |
 | `test_nightly_new_source.py`      | A Source added only to the registry is read, counted, caught up                         |
 | `test_any_language.py`            | A Recipient in a language without reviewed program text (ADR 0004)                      |
 | `test_busy_model.py`              | How long each model call may wait for a busy model                                      |
