@@ -169,7 +169,7 @@ def test_the_sentence_says_first_what_the_report_never_holds_then_what_it_says()
     # in it and says what it tells without the term. Each day, not each evening: the Brief's time
     # can be any time of day (#733).
     says = {"en": ("Nothing from your messages", "whether the Brief went out"),
-            "fi": ("Ei mitään viesteistäsi", "lähtikö kooste"),
+            "fi": ("Raportissa ei ole mitään viesteistäsi", "lähtikö kooste"),
             "zh": ("不含你的任何消息", "日报发出去没有")}
     for language, table in TEXT.items():
         about = table["finish.report.about"]
