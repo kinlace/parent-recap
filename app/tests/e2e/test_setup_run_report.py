@@ -164,14 +164,43 @@ def test_every_run_report_text_is_in_all_three_languages():
             assert table.get(f"finish.report.{key}", "").strip(), (language, key)
 
 
-def test_the_sentence_says_what_the_report_is_and_what_it_never_holds():
-    # The run, not the evening's: the Brief's time can be any time of day (#733).
-    says = {"en": ("how the run went", "nothing from your messages"),
-            "fi": ("miten ajo meni", "ei ole mitään viesteistäsi"),
-            "zh": ("这次运行的情况", "不含你的任何消息")}
+RUN_REPORT_TERM = {"en": "run report", "fi": "ajoraport", "zh": "运行报告"}
+# What turning the switch on sends, said without the term (#1046). Each day, not each
+# evening: the Brief's time can be any time of day (#733).
+WENT_OUT = {"en": "each day whether the Brief went out", "fi": "joka päivä, lähtikö kooste",
+            "zh": "每天告诉 Parent Recap 团队日报发出去没有"}
+
+
+def test_the_switch_says_what_turning_it_on_sends_without_the_term():
     for language, table in TEXT.items():
-        for words in says[language]:
-            assert words in table["finish.report.about"], (language, words)
+        label = table["finish.report.on"]
+        assert WENT_OUT[language] in label, (language, label)
+        assert "Parent Recap" in label, (language, label)
+        assert RUN_REPORT_TERM[language] not in label.lower(), (language, label)
+
+
+def test_the_sentence_says_first_what_is_never_in_it_then_what_and_why():
+    never = {"en": "Nothing from your messages, and no names, addresses or file paths.",
+             "fi": "Siinä ei ole mitään viesteistäsi eikä nimiä, osoitteita tai tiedostopolkuja.",
+             "zh": "不含你的任何消息，也没有名字、地址或文件路径。"}
+    then = {"en": ("whether the Brief went out", "which step failed", "logs or screenshots"),
+            "fi": ("lähtikö kooste", "mikä vaihe epäonnistui", "lokeja tai kuvakaappauksia"),
+            "zh": ("日报发出去没有", "哪一步出了问题", "日志或截图")}
+    for language, table in TEXT.items():
+        about = table["finish.report.about"]
+        assert about.startswith(never[language]), (language, about)
+        at = [about.index(words) for words in then[language]]
+        assert at == sorted(at), (language, about)
+        assert RUN_REPORT_TERM[language] not in about.lower(), (language, about)
+
+
+def test_the_question_and_saved_lines_say_it_without_the_term():
+    said = {"en": "whether the Brief went out", "fi": "lähtikö kooste", "zh": "日报发出去没有"}
+    for language, table in TEXT.items():
+        for key in ["ask", "saved.on", "saved.off"]:
+            value = table[f"finish.report.{key}"]
+            assert said[language] in value, (language, key, value)
+            assert RUN_REPORT_TERM[language] not in value.lower(), (language, key, value)
 
 
 def test_the_own_gmail_privacy_text_names_the_run_report_in_every_language():
