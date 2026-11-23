@@ -164,14 +164,28 @@ def test_every_run_report_text_is_in_all_three_languages():
             assert table.get(f"finish.report.{key}", "").strip(), (language, key)
 
 
-def test_the_sentence_says_what_the_report_is_and_what_it_never_holds():
-    # The run, not the evening's: the Brief's time can be any time of day (#733).
-    says = {"en": ("how the run went", "nothing from your messages"),
-            "fi": ("miten ajo meni", "ei ole mitään viesteistäsi"),
-            "zh": ("这次运行的情况", "不含你的任何消息")}
+def test_the_sentence_says_first_what_the_report_never_holds_then_what_it_says():
+    # Parents didn't know what a "Run Report" was (#1046): the sentence opens with what is never
+    # in it and says what it tells without the term. Each day, not each evening: the Brief's time
+    # can be any time of day (#733).
+    says = {"en": ("Nothing from your messages", "whether the Brief went out"),
+            "fi": ("Ei mitään viesteistäsi", "lähtikö kooste"),
+            "zh": ("不含你的任何消息", "日报发出去没有")}
     for language, table in TEXT.items():
-        for words in says[language]:
-            assert words in table["finish.report.about"], (language, words)
+        about = table["finish.report.about"]
+        never, tells = says[language]
+        assert about.startswith(never), language
+        assert tells in about, language
+
+
+def test_the_switch_says_what_it_sends_without_the_term():
+    # The label alone says what turning it on sends (#1046).
+    for language, table in TEXT.items():
+        label = table["finish.report.on"]
+        assert table["finish.report.title"].lower() not in label.lower(), language
+    assert "whether the Brief went out" in TEXT["en"]["finish.report.on"]
+    assert "日报发出去没有" in TEXT["zh"]["finish.report.on"]
+    assert "lähtikö kooste" in TEXT["fi"]["finish.report.on"]
 
 
 def test_the_own_gmail_privacy_text_names_the_run_report_in_every_language():
