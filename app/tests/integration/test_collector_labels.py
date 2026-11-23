@@ -3,7 +3,7 @@ language; the summarize prompt explains them (see summarize._build_prompt). Also
 is told, and the calendar event it is every evening (ADR 0040)."""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 import time_machine
@@ -14,24 +14,50 @@ from family_brief.config import Config
 from family_brief.state import State
 
 
-@pytest.mark.parametrize("day, label", [
-    ("2026-09-28", "Mon · tomorrow"),
-    ("2026-09-29", "Tue · day after tomorrow"),
-    ("2026-10-01", "Thu · in 4 days"),
-])
-@time_machine.travel(NOW, tick=False)
-def test_wilma_timetable_is_headed_with_its_date(sources, day, label):
-    cli = sources.fakes["wilma"]
+def _timetable(cli, day):
     cli.set_up()
-    cli.answers[("schedule", "list")] = {"when": "tomorrow", "date": day, "students": [
+    cli.answers[("schedule", "list")] = {"students": [
         {"student": {"name": "Virtanen Aino"}, "lessons": [
             {"date": day, "start": "08:15", "end": "09:45", "subject": "Liikunta", "room": "ulkokenttä"}]}]}
 
+
+@time_machine.travel(NOW, tick=False)
+def test_wilma_timetable_is_headed_with_its_date(sources):
+    _timetable(sources.fakes["wilma"], "2026-09-28")
+
     [msg] = wilma.collect(Config.model_validate(sources.config), State(sources.home / "state.json"), []).messages
 
-    assert msg.subject == f"Timetable for the next school day (from {day})"
+    assert msg.subject == "Timetable for the next school day (from 2026-09-28)"
     assert msg.body.splitlines()[:3] == [
-        f"[{day} {label}]", "— Virtanen Aino —", "  08:15–09:45  Liikunta  @ ulkokenttä"]
+        "[2026-09-28 Mon · tomorrow]", "— Virtanen Aino —", "  08:15–09:45  Liikunta  @ ulkokenttä"]
+
+
+@pytest.mark.parametrize("evening, told", [
+    ("Friday", False),
+    ("Saturday", False),
+    ("Sunday", True),
+])
+def test_mondays_timetable_comes_only_on_sunday_evening(sources, evening, told):
+    """#1051: Friday's and Saturday's Briefs say nothing about Monday's lessons; Sunday's does."""
+    _timetable(sources.fakes["wilma"], "2026-09-28")
+    night = NOW - timedelta(days={"Friday": 2, "Saturday": 1, "Sunday": 0}[evening])
+
+    with time_machine.travel(night, tick=False):
+        messages = wilma.collect(Config.model_validate(sources.config), State(sources.home / "state.json"), []).messages
+
+    assert [m.metadata["first_date"] for m in messages] == (["2026-09-28"] if told else [])
+
+
+@pytest.mark.parametrize("days_before, told", [(4, False), (2, False), (1, True)])
+def test_after_a_holiday_the_timetable_comes_on_the_evening_before_school_starts_again(sources, days_before, told):
+    """#1051: no school until Thursday: the timetable waits for Wednesday evening."""
+    _timetable(sources.fakes["wilma"], "2026-10-01")
+    night = datetime(2026, 10, 1, 21, 0, tzinfo=NOW.tzinfo) - timedelta(days=days_before)
+
+    with time_machine.travel(night, tick=False):
+        messages = wilma.collect(Config.model_validate(sources.config), State(sources.home / "state.json"), []).messages
+
+    assert [m.metadata["first_date"] for m in messages] == (["2026-10-01"] if told else [])
 
 
 EXAM = {"examId": 1027029, "date": "2026-09-29", "name": "Murtoluvut", "subject": "Matematiikka",

@@ -1,19 +1,9 @@
 covers: [finnish-dates]
 note: >
-  Friday night. "Maanantaina" and a Wilma schedule headed with the next school day: the
-  gym clothes are for Monday, not "tomorrow".
+  Friday night. "Maanantaina" means the next school day: the gym clothes are for Monday, not
+  "tomorrow". Friday's Brief has no Wilma timetable; Monday's comes on Sunday evening (#1051).
 now: 2026-10-09T21:00:00+03:00
 messages:
-  - id: w-sched-1009
-    source: wilma
-    at: 2026-10-09T21:00:00+03:00
-    subject: Timetable for the next school day (from 2026-10-12)
-    chat: schedule
-    body: |
-      [2026-10-12 Mon · in 3 days]
-      — Virtanen Aino —
-        08:15–09:45  Liikunta  @ ulkokenttä
-        10:00–11:30  Matematiikka  @ 204
   - id: w-liikunta-1009
     source: wilma
     at: 2026-10-09T13:05:00+03:00

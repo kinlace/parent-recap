@@ -52,6 +52,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_brief_text.py`          | The program's own Brief and Weekend Picks text                   |
 | `test_citations.py`           | The model's citations checked against what the program supplied  |
 | `test_demo_week.py`           | The demo's made-up week: every Source, one held back, its days   |
+| `test_earlier_points.py`      | The earlier Briefs' points tonight's gets; a to-do due tomorrow  |
 | `test_eepos.py`               | Eepos: a school's address, a student as a Kid, entries as events |
 | `test_evaka.py`               | eVaka: a city and its host, a child as a Kid, events, closed days, the deadline |
 | `test_socialschools.py`       | Social Schools: a post's HTML as text, its times, whole days, a child and a post as a Kid's |

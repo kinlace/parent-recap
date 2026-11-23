@@ -348,10 +348,11 @@ SCHEDULE_DAYS_AHEAD = 13
 
 
 def _collect_schedule(state: State, wilmas: _Wilmas | None = None, kids: list[Kid] | None = None) -> list[Message]:
-    """The next school day's timetable as one Message per evening: the first day after today with
-    lessons, which on a Friday or before a holiday is not tomorrow, so its header says its date.
-    Under each Kid's lessons it gives their usual hours on that weekday, and the metadata holds the
-    hours that differ from them, which the Brief shows in the program's words (ADR 0054)."""
+    """The next school day's timetable as one Message, only on the evening before it (#1051): the
+    first day after today with lessons, when that is tomorrow. On a Friday or Saturday, or before a
+    holiday, there is none, so a weekend's Briefs don't each repeat Monday's hours; Sunday's tells
+    them. Under each Kid's lessons it gives their usual hours on that weekday, and the metadata
+    holds the hours that differ from them, which the Brief shows in the program's words (ADR 0054)."""
     from datetime import date as _date, datetime as _dt
     today = _dt.now().astimezone().date()
     payload = _run_or_log(["schedule", "list", "--all-students",
@@ -376,10 +377,10 @@ def _collect_schedule(state: State, wilmas: _Wilmas | None = None, kids: list[Ki
     if not ahead:
         return []
     day = _date.fromisoformat(ahead[0])
+    if day != today + timedelta(days=1):
+        return []
 
-    days_ahead = (day - today).days
-    rel = {1: "tomorrow", 2: "day after tomorrow"}.get(days_ahead, f"in {days_ahead} days")
-    lines = [f"[{day.isoformat()} {_WEEKDAYS[day.weekday()]} · {rel}]"]
+    lines = [f"[{day.isoformat()} {_WEEKDAYS[day.weekday()]} · tomorrow]"]
     changed: list[dict] = []
     for student_name, lessons in students:
         on_day = [it for it in lessons if str(_first(it, "date", default="")) == day.isoformat()]

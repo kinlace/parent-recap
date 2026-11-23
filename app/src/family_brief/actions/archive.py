@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from .. import languages
-from ..brief import Brief, EarlierBrief, RunNotes, from_archive, to_archive
+from ..brief import ActionItem, Brief, EarlierBrief, KidSection, RunNotes, from_archive, to_archive
 from ..brief_text import PRODUCT_NAME, BriefText
 from ..collectors.base import Message
 from ..config import Config
@@ -79,25 +79,34 @@ def _render_markdown(t: BriefText, date_str: str, brief: Brief,
 
 def recent_points(cfg: Config, today: str, days: int = 3) -> list[EarlierBrief]:
     """Notices and to-dos from the previous few nights' briefs, oldest first. Tonight's summary
-    uses them to stay consistent with what it already said and to re-surface near deadlines.
+    uses them to stay consistent with what it already said and to re-remind a to-do on the
+    evening before it is due (#1051). An older night, back as far as the Week Ahead reads, gives
+    only its to-dos due tomorrow, so one told a week ahead still comes again on its eve.
     Briefs that were never delivered are skipped: the parents were not told, and their Messages
     come round again tonight. Archives from before the flag count as delivered. Each night's
     `third_parties` are the people its Messages came from, for the AI filter, not for the model."""
     base = date.fromisoformat(today)
+    tomorrow = (base + timedelta(days=1)).isoformat()
     out: list[EarlierBrief] = []
-    for i in range(days, 0, -1):
+    for i in range(max(days, NIGHTS_BACK), 0, -1):
         day = (base - timedelta(days=i)).isoformat()
         try:
             data = json.loads((cfg.archive.resolved_dir() / f"{day}.raw.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if data.get("delivered") is False:
+        if not isinstance(data, dict) or data.get("delivered") is False:
             continue
         brief, _ = from_archive(data.get("summary"))
-        kids = [k for k in brief.kids if k.notices or k.action_items]
+        kids = brief.kids if i <= days else [
+            KidSection(k.kid, [], [a for a in k.action_items if _due(a) == tomorrow]) for k in brief.kids]
+        kids = [k for k in kids if k.notices or k.action_items]
         if kids:
             out.append(EarlierBrief(day, kids, third_parties(cfg, data.get("messages") or [])))
     return out
+
+
+def _due(item: ActionItem) -> str:
+    return str(item.by or "")[:10]
 
 
 def earlier_nights(cfg: Config, today: str, days: int = NIGHTS_BACK) -> list[EarlierNight]:
@@ -119,16 +128,7 @@ def earlier_nights(cfg: Config, today: str, days: int = NIGHTS_BACK) -> list[Ear
     return out
 
 
-def has_due_soon(points: list[EarlierBrief], today: str, within_days: int = 3) -> bool:
-    """Whether an earlier to-do falls due between today and `within_days` from now."""
-    start = date.fromisoformat(today)
-    end = start + timedelta(days=within_days)
-    for day in points:
-        for kid in day.kids:
-            for item in kid.action_items:
-                try:
-                    if start <= date.fromisoformat(str(item.by)[:10]) <= end:
-                        return True
-                except ValueError:
-                    continue
-    return False
+def has_due_tomorrow(points: list[EarlierBrief], today: str) -> bool:
+    """Whether an earlier to-do falls due tomorrow, so tonight's Brief re-reminds it (#1051)."""
+    tomorrow = (date.fromisoformat(today) + timedelta(days=1)).isoformat()
+    return any(_due(item) == tomorrow for day in points for kid in day.kids for item in kid.action_items)

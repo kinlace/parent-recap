@@ -1,7 +1,7 @@
 covers: [re-reminder]
 note: >
-  Tuesday night, no new Messages. The 3-day window includes both ends: a to-do due today and one
-  due in exactly 3 days are re-reminded; one due in 4 days is not.
+  Tuesday night, no new Messages. Only the to-do due tomorrow is re-reminded (#1051): not the one
+  due today, whose evening has come, nor those due the day after tomorrow or later.
 now: 2026-10-06T21:00:00+03:00
 earlier_briefs:
   - date: "2026-10-05"
@@ -17,7 +17,7 @@ earlier_briefs:
             source: [whatsapp]
             verified: true
           - what: 交 lukudiplomi 书单
-            by: "2026-10-09"
+            by: "2026-10-07"
             who: 任一
             refs: [gm-1a-1005]
             ref_sources: { gm-1a-1005: [gmail] }
@@ -27,7 +27,7 @@ earlier_briefs:
         notices: []
         action_items:
           - what: 在 Wilma 报名 vanhempainvartti（家长面谈）
-            by: "2026-10-10"
+            by: "2026-10-08"
             who: 任一
             refs: [w-vartti-1005]
             ref_sources: { w-vartti-1005: [wilma] }
@@ -37,29 +37,22 @@ expect:
   action_items:
     - {
         kid: Eero,
-        what:
-          [
-            kumisaappaat,
-            kumisaap,
-            saappa,
-            saapas,
-            雨靴,
-            rubber boots,
-            wellies,
-            rain boots,
-          ],
-        by: 2026-10-06,
-      }
-    - {
-        kid: Eero,
         what: [lukudiplomi, kirjalista, 书单, book list, reading],
-        by: 2026-10-09,
+        by: 2026-10-07,
       }
   notices:
     must_not:
       - {
           text:
             [
+              kumisaappaat,
+              kumisaap,
+              saappa,
+              saapas,
+              雨靴,
+              rubber boots,
+              wellies,
+              rain boots,
               vanhempainvartti,
               vanhempainvart,
               tapaam,

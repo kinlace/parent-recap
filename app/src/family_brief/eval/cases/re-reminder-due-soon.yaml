@@ -1,7 +1,8 @@
 covers: [re-reminder, empty-night]
 note: >
-  Tuesday night, no new Messages. Sunday's to-do falls due on Thursday, within 3 days, so it is
-  re-reminded with its refs carried over. Eero's to-do is 7 days out and is not.
+  Tuesday night, no new Messages. Sunday's to-do falls due on Thursday, not tomorrow, so it is
+  not re-reminded yet: that waits for Wednesday evening (#1051). Eero's to-do is 7 days out and
+  is not either.
 now: 2026-10-06T21:00:00+03:00
 earlier_briefs:
   - date: "2026-10-04"
@@ -27,12 +28,23 @@ earlier_briefs:
             source: [gmail]
             verified: true
 expect:
-  action_items:
-    - {
-        kid: Aino,
-        what: [lupalappu, lupalap, suostum, 同意书, permission, consent],
-        by: 2026-10-08,
-      }
   notices:
-    must:
-      - { text: [再提醒, muistutus, (reminder)], where: action_items }
+    must_not:
+      - {
+          text:
+            [
+              lupalappu,
+              lupalap,
+              suostum,
+              同意书,
+              permission,
+              consent,
+              班级照片,
+              kuva,
+              photo,
+              再提醒,
+              muistutus,
+              (reminder),
+            ],
+          where: action_items,
+        }
