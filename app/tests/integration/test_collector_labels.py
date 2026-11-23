@@ -1,6 +1,7 @@
 """Labels the Sources add to Messages are model input, so they are English whatever the Brief's
 language; the summarize prompt explains them (see summarize._build_prompt). Also when a Wilma exam
-is told, and the calendar event it is every evening (ADR 0040)."""
+is told, and the calendar event it is every evening (ADR 0040), and that the timetable is told
+only on the evening before its school day (#1051)."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta

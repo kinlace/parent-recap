@@ -94,7 +94,7 @@ the import path, so a test may import a helper from a test in another layer.
 | `test_brief_relay.py`           | The gateway's Brief relay: the key, the cap, the request, the message, keys on request                       |
 | `test_report_relay.py`          | The gateway taking a Run Report: by key or id, the per-caller limit, only the program's fields, 30 days      |
 | `test_problem_relay.py`         | The gateway taking a Problem Report: by key or id, the size and count limits, its shape, never logged, 30 days (#925) |
-| `test_collector_labels.py`      | The labels Sources add to Messages are English                                                               |
+| `test_collector_labels.py`      | The labels Sources add to Messages are English; the timetable only on the evening before its day             |
 | `test_command_path.py`          | `parent-recap` put in its own folder on the PATH, once, and recorded                                         |
 | `test_versions.py`              | The install's switch to a new version, the previous one kept, `switch-back` (ADR 0047); on Windows with the Linked Device stopped and under the run lock (#991) |
 | `test_update_look.py`           | The update's look for the evening run: a version that failed isn't tried again (ADR 0047)                    |

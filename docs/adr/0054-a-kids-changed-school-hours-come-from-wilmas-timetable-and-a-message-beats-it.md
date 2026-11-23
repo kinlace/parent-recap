@@ -24,4 +24,5 @@ A message beats the timetable this way: when the model's text about that Kid (th
 - The check that the model gave the hours is a heuristic: a usual time named in that Kid's text for another reason (a training at 14:00) leaves the line out, and a model that gives a message's hours without the usual ones lets the timetable's line show beside them.
 - A school whose timetable doesn't return past weeks gives one other day per weekday, so nothing is usual and no line shows; the model's text is then as before.
 - A holiday longer than two weeks has no next school day in the window, so the timetable gives nothing until it is.
+- Since #1051 the timetable, and with it the changed hours, reaches the Brief only when the next school day is tomorrow: Monday's in Sunday's Brief, not in Friday's and Saturday's too.
 - Only the next school day, only from Wilma: Kids without Wilma get what the messages say. The four weeks could feed the Week Ahead later.
