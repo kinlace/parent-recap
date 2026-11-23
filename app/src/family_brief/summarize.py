@@ -95,7 +95,7 @@ Earlier Briefs (earlier_briefs in the payload):
 - Use them only to stay consistent. If today's messages change something said before (lineup, time or place changed), say clearly what changed
 - Where today brings no new information, don't reach the opposite conclusion of before. For example, if a kid wasn't in an earlier lineup, don't warn about a clash as if they were playing in that match
 - Don't repeat earlier notices as they were, unless the thing happens within 2 days or relates to today's new messages
-- An earlier action item due between today and 3 days from now, which today's messages don't show as done or cancelled, goes into today's action_items again: start its what with "$reminder", and keep that item's refs as they were (write [] if it had none). Don't list again those already past their due date
+- An earlier action item due tomorrow, which today's messages don't show as done or cancelled, goes into today's action_items again: start its what with "$reminder", and keep that item's refs as they were (write [] if it had none). Don't list again those due on any other day: one due later is reminded on the evening before it, and one due today or earlier is past
 """)
 
 
@@ -278,10 +278,8 @@ def _build_prompt(cfg: Config, messages: list[Message], upcoming_events: list[di
         f"**Important**: in `date_reference`, today={date_ref['today']}, tomorrow={date_ref['tomorrow']}, "
         f"day_after={date_ref['day_after']}.\n"
         "- When the Brief says \"tomorrow\", it must mean the date in date_reference.tomorrow; don't work it out yourself.\n"
-        "- A Wilma timetable message with the header `[YYYY-MM-DD Mon · in N days]` is for that date, "
-        "N days ahead. Don't assume a timetable is for \"tomorrow\" unless its header says so: "
-        "especially when today is a Friday, Saturday or Sunday there may be no school tomorrow, and "
-        "Wilma usually gives the next school day.\n"
+        "- A Wilma timetable message with the header `[YYYY-MM-DD Mon · tomorrow]` is tomorrow's "
+        "timetable: it comes only on the evening before a school day.\n"
         "- A Wilma exam message (chat `exams`) is an exam from Wilma's exam list, headed with its date. "
         "Tell it under its kid with the date, the time when it has one, the subject, the exam's name "
         "and what to study, in full: the pages and chapters are what the parents need. It is already in "
