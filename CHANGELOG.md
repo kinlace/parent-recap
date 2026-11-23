@@ -2,6 +2,24 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## 0.22.0 · 2026-11-23
+
+### Added
+
+- Sunday's evening Brief now ends with "Next week" (下周安排, Ensi viikolla), listing day by day what is due and what is on from Monday to Friday. It comes even on a quiet Sunday when the week ahead has something.
+- When a child's next school day starts or ends at another time than usual, the evening Brief says so with both times, for example "🕒 Mia, Mon 28 Sep: 8:15–12:00 (normally 8:15–14:00)". It reads this from the Wilma timetable; a message from the school about the change wins over the timetable.
+- Anyone can see a real Brief before connecting an account: `parent-recap demo --to <address> --language <code>` runs once on a made-up family's week and emails the Brief, marked as a demo, in the chosen language.
+
+### Changed
+
+- In Gmail, a Brief with events now shows a card for each event at the top, each with its own "Add to Calendar" button, instead of a grey "Unable to load event" box. Each event comes as its own .ics file named by its day and title.
+- SECURITY.md and the README now say exactly what a Problem Report holds, what an update's checks send and what else leaves the computer. The program itself doesn't change.
+
+### Fixed
+
+- A Chinese Brief made after the computer slept now says 电脑进入了休眠, the word parents use, and the Chinese README says the same.
+- When the setup page's Wilma step lists a Wilma you're already signed in to, it now has a Continue button, so you can go on to Check without signing in to Wilma again.
+
 ## 0.21.0 · 2026-11-17
 
 ### Added
