@@ -1,6 +1,6 @@
 """The setup page's Run Report switch, under Finish's "Later, if you need it" (ADR 0048, #927): on
-by default for a Household that sends its Brief through the gateway, with one sentence on what the
-report is and a link to what it holds in SECURITY.md. A Household that turns sending from its own
+by default for a Household that sends its Brief through the gateway, with a label and a sentence that say
+what it sends without the term (#1046) and a link to what it holds in SECURITY.md. A Household that turns sending from its own
 Gmail on (ADR 0034) is asked instead: the switch is off until the family turns it on. Once the
 family set it, it stays as set whichever way the Brief is sent. A Hosted Household's page has no
 switch. The manage skill turns it off and on with `setup save`.
@@ -164,42 +164,40 @@ def test_every_run_report_text_is_in_all_three_languages():
             assert table.get(f"finish.report.{key}", "").strip(), (language, key)
 
 
+# The sentences under the heading say what is sent without the term (#1046).
 RUN_REPORT_TERM = {"en": "run report", "fi": "ajoraport", "zh": "运行报告"}
-# What turning the switch on sends, said without the term (#1046). Each day, not each
-# evening: the Brief's time can be any time of day (#733).
-WENT_OUT = {"en": "each day whether the Brief went out", "fi": "joka päivä, lähtikö kooste",
-            "zh": "每天告诉 Parent Recap 团队日报发出去没有"}
+WENT_OUT = {"en": "whether the Brief went out", "fi": "lähtikö kooste", "zh": "日报发出去没有"}
 
 
 def test_the_switch_says_what_turning_it_on_sends_without_the_term():
+    # Each day, not each evening: the Brief's time can be any time of day (#733).
+    each_day = {"en": "Tell the Parent Recap team each day ",
+                "fi": "Kerro Parent Recapin tiimille joka päivä, ", "zh": "每天告诉 Parent Recap 团队"}
     for language, table in TEXT.items():
         label = table["finish.report.on"]
-        assert WENT_OUT[language] in label, (language, label)
-        assert "Parent Recap" in label, (language, label)
-        assert RUN_REPORT_TERM[language] not in label.lower(), (language, label)
+        assert label == each_day[language] + WENT_OUT[language], (language, label)
 
 
 def test_the_sentence_says_first_what_is_never_in_it_then_what_and_why():
-    never = {"en": "Nothing from your messages, and no names, addresses or file paths.",
-             "fi": "Siinä ei ole mitään viesteistäsi eikä nimiä, osoitteita tai tiedostopolkuja.",
-             "zh": "不含你的任何消息，也没有名字、地址或文件路径。"}
-    then = {"en": ("whether the Brief went out", "which step failed", "logs or screenshots"),
-            "fi": ("lähtikö kooste", "mikä vaihe epäonnistui", "lokeja tai kuvakaappauksia"),
-            "zh": ("日报发出去没有", "哪一步出了问题", "日志或截图")}
+    never = {"en": "This sends nothing from your messages, and no names, addresses or file paths.",
+             "fi": "Tämä ei lähetä mitään viesteistäsi eikä nimiä, osoitteita tai tiedostopolkuja.",
+             "zh": "这不会发送你的任何消息，也不会发送名字、地址或文件路径。"}
+    then = {"en": ("which step failed", "logs or screenshots"),
+            "fi": ("mikä vaihe epäonnistui", "lokeja tai kuvakaappauksia"),
+            "zh": ("哪一步出了问题", "日志或截图")}
     for language, table in TEXT.items():
         about = table["finish.report.about"]
         assert about.startswith(never[language]), (language, about)
-        at = [about.index(words) for words in then[language]]
-        assert at == sorted(at), (language, about)
+        positions = [about.index(words) for words in (WENT_OUT[language], *then[language])]
+        assert positions == sorted(positions), (language, about)
         assert RUN_REPORT_TERM[language] not in about.lower(), (language, about)
 
 
 def test_the_question_and_saved_lines_say_it_without_the_term():
-    said = {"en": "whether the Brief went out", "fi": "lähtikö kooste", "zh": "日报发出去没有"}
     for language, table in TEXT.items():
         for key in ["ask", "saved.on", "saved.off"]:
             value = table[f"finish.report.{key}"]
-            assert said[language] in value, (language, key, value)
+            assert WENT_OUT[language] in value, (language, key, value)
             assert RUN_REPORT_TERM[language] not in value.lower(), (language, key, value)
 
 
