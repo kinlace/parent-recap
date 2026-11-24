@@ -81,12 +81,12 @@ def recent_points(cfg: Config, today: str, days: int = 3) -> list[EarlierBrief]:
     """Notices and to-dos from the previous few nights' briefs, oldest first. Tonight's summary
     uses them to stay consistent with what it already said and to re-remind a to-do on the
     evening before it is due (#1051). An older night, back as far as the Week Ahead reads, gives
-    only its to-dos due tomorrow, so one told a week ahead still comes again on its eve.
+    only its to-dos due tomorrow, so one told a week ahead still comes again on its eve; with
+    `re_reminders: daily` (#1054), every to-do not yet due, so it comes again every evening.
     Briefs that were never delivered are skipped: the parents were not told, and their Messages
     come round again tonight. Archives from before the flag count as delivered. Each night's
     `third_parties` are the people its Messages came from, for the AI filter, not for the model."""
     base = date.fromisoformat(today)
-    tomorrow = (base + timedelta(days=1)).isoformat()
     out: list[EarlierBrief] = []
     for i in range(max(days, NIGHTS_BACK), 0, -1):
         day = (base - timedelta(days=i)).isoformat()
@@ -98,15 +98,23 @@ def recent_points(cfg: Config, today: str, days: int = 3) -> list[EarlierBrief]:
             continue
         brief, _ = from_archive(data.get("summary"))
         kids = brief.kids if i <= days else [
-            KidSection(k.kid, [], [a for a in k.action_items if _due(a) == tomorrow]) for k in brief.kids]
+            KidSection(k.kid, [], [a for a in k.action_items if _to_remind(a, today, cfg.re_reminders)])
+            for k in brief.kids]
         kids = [k for k in kids if k.notices or k.action_items]
         if kids:
             out.append(EarlierBrief(day, kids, third_parties(cfg, data.get("messages") or [])))
     return out
 
 
-def _due(item: ActionItem) -> str:
-    return str(item.by or "")[:10]
+def _to_remind(item: ActionItem, today: str, how: str) -> bool:
+    """Whether tonight's Brief re-reminds `item`: due tomorrow, or with `daily` (#1054) due
+    tomorrow or later. One without a readable due date is never re-reminded."""
+    try:
+        due = date.fromisoformat(str(item.by or "")[:10])
+    except ValueError:
+        return False
+    days_left = (due - date.fromisoformat(today)).days
+    return days_left == 1 or (how == "daily" and days_left > 1)
 
 
 def earlier_nights(cfg: Config, today: str, days: int = NIGHTS_BACK) -> list[EarlierNight]:
@@ -128,7 +136,7 @@ def earlier_nights(cfg: Config, today: str, days: int = NIGHTS_BACK) -> list[Ear
     return out
 
 
-def has_due_tomorrow(points: list[EarlierBrief], today: str) -> bool:
-    """Whether an earlier to-do falls due tomorrow, so tonight's Brief re-reminds it (#1051)."""
-    tomorrow = (date.fromisoformat(today) + timedelta(days=1)).isoformat()
-    return any(_due(item) == tomorrow for day in points for kid in day.kids for item in kid.action_items)
+def has_re_reminder(points: list[EarlierBrief], today: str, how: str = "once") -> bool:
+    """Whether tonight's Brief re-reminds an earlier to-do: one due tomorrow (#1051), or with
+    `how` daily one due tomorrow or later (#1054), so a quiet night still sends a Brief."""
+    return any(_to_remind(item, today, how) for day in points for kid in day.kids for item in kid.action_items)

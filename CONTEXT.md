@@ -27,7 +27,7 @@ Something a parent must do, with an absolute due date and an optional assignee. 
 _Avoid_: task, todo, 家长要做的事
 
 **Don't Forget** (zh 还记得, fi muista):
-The short block at the end of the Brief with the re-reminded Action Items: earlier ones due tomorrow, one line each (weekday, Kid, what to do). The model marks a re-reminder with its prefix; the program lists it here instead of among tonight's new Action Items, so repeats look different from news.
+The short block at the end of the Brief with the re-reminded Action Items: earlier ones due tomorrow, or with `re_reminders: daily` every one not yet due, one line each (weekday, or the date when a week or more away, Kid, what to do). The model marks a re-reminder with its prefix; the program lists it here instead of among tonight's new Action Items, so repeats look different from news.
 _Avoid_: reminders section
 
 **Week Ahead** (zh 下周安排, fi ensi viikolla):

@@ -150,11 +150,11 @@ def _action_items(brief: Brief) -> list[tuple[str, ActionItem]]:
 def _split_action_items(brief: Brief, date_str: str,
                         t: BriefText) -> tuple[list[tuple[str, ActionItem]], list[str]]:
     """Tonight's new Action Items, which the Action Items list, apart from the re-reminders, which
-    the Don't Forget block at the end of the Brief lists one short line each: the weekday it is due,
-    its Kid and what to do, without the prefix (#1053). A re-reminder is known by the prefix the model
-    starts it with, in `t`'s language or a reviewed one (a failed translation's version keeps the
-    original's), longest first. It is due tomorrow, so one whose due date can't be read gets
-    tomorrow's weekday."""
+    the Don't Forget block at the end of the Brief lists one short line each: the weekday it is due
+    (its date, when that is a week or more away), its Kid and what to do, without the prefix (#1053).
+    A re-reminder is known by the prefix the model starts it with, in `t`'s language or a reviewed
+    one (a failed translation's version keeps the original's), longest first. One whose due date
+    can't be read gets tomorrow's weekday, the day a re-reminder is due by default."""
     prefixes = sorted({t.re_reminder, *(x.re_reminder for x in TEXT.values())}, key=len, reverse=True)
     tomorrow = date.fromisoformat(date_str) + timedelta(days=1)
     new, reminders = [], []
@@ -167,7 +167,10 @@ def _split_action_items(brief: Brief, date_str: str,
             due = date.fromisoformat((a.by or "")[:10])
         except ValueError:
             due = tomorrow
-        reminders.append(t.dont_forget_item.format(day=t.weekdays[due.weekday()], kid=kid or t.household,
+        # Within the coming week its weekday is enough; one further off, which re_reminders: daily
+        # brings (#1054), says its date, so a Monday a week away doesn't read as tomorrow.
+        day = t.weekdays[due.weekday()] if (due - tomorrow).days < 6 else t.on(due)
+        reminders.append(t.dont_forget_item.format(day=day, kid=kid or t.household,
                                                    what=a.what.removeprefix(prefix).strip()))
     return new, reminders
 

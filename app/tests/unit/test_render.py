@@ -547,6 +547,21 @@ def test_an_evening_with_only_re_reminders_has_no_empty_action_items_heading():
     assert "📌 Don't forget:" in mail.text
 
 
+def test_a_re_reminder_due_after_the_coming_week_says_its_date_not_only_its_weekday():
+    # With re_reminders: daily (#1054) a to-do comes again long before its eve, and "Mon" alone
+    # would read as tomorrow's on a Sunday.
+    t = TEXT["en"]
+    brief = parse({"per_kid": [{"kid": "Mia", "action_items": [
+        {"what": f"{t.re_reminder}Order the class photos", "by": "2026-10-05"},
+        {"what": f"{t.re_reminder}Return the library books", "by": "2026-10-03"}]}]})
+    night = brief_of(brief, t, created=[], ics_events=[])
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+
+    assert "• Mon 5 Oct: Mia, Order the class photos" in mail.text
+    assert "• Sat: Mia, Return the library books" in mail.text
+
+
 def test_an_evening_with_no_re_reminders_has_no_block():
     reply, sources = the_normal_night("en")
     t = TEXT["en"]

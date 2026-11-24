@@ -265,7 +265,7 @@ class _Read:
     direct_events: list[CalendarEvent]
     coverage: dict[str, dict]
     earlier: list[EarlierBrief]
-    due_tomorrow: bool
+    re_reminder: bool   # an earlier to-do tonight's Brief re-reminds (#1051, #1054)
     event_tomorrow: bool
     # On a Sunday, the coming Monday to Friday and the earlier evenings the Week Ahead is made from
     # (ADR 0053), and the week as known before tonight's Brief is written.
@@ -280,7 +280,7 @@ class _Read:
     @property
     def anything_new(self) -> bool:
         # A Sunday whose week has something sends its Brief, though nothing else is new.
-        return bool(self.messages or self.direct_events or self.due_tomorrow or self.week)
+        return bool(self.messages or self.direct_events or self.re_reminder or self.week)
 
 
 def _read(cfg: Config, options: Options, io: IO, state: State, started: datetime) -> _Read:
@@ -302,7 +302,8 @@ def _read(cfg: Config, options: Options, io: IO, state: State, started: datetime
     today = started.strftime("%Y-%m-%d")
     earlier = io.recent_points(cfg, today)
     tomorrow = started.date() + timedelta(days=1)
-    read = _Read(started, messages, direct_events, coverage, earlier, archive.has_due_tomorrow(earlier, today),
+    read = _Read(started, messages, direct_events, coverage, earlier,
+                 archive.has_re_reminder(earlier, today, cfg.re_reminders),
                  any(e.start.date() == tomorrow for e in direct_events))
     read.week_days = week_ahead.week_after(started.date())
     if read.week_days:
@@ -488,7 +489,7 @@ def _write(cfg: Config, options: Options, io: IO, state: State, read: _Read, sen
     for_ai, held = for_the_ai(cfg, read.messages)
     # Only the model tells a Source's event on the evening before it (#696), so tomorrow's asks it,
     # and one a parent must plan for when it's first listed (#777), so a new one does too.
-    asks_model = bool(for_ai or read.due_tomorrow or read.event_tomorrow or _new_events(cfg, state, read.direct_events))
+    asks_model = bool(for_ai or read.re_reminder or read.event_tomorrow or _new_events(cfg, state, read.direct_events))
     if asks_model:
         if options.preview:
             _preview_step("writing")
@@ -646,7 +647,7 @@ def demo_mail(cfg: Config, messages: list[Message], events: list[CalendarEvent],
     the model's call ended on, when the Brief is the rule-based list instead."""
     started = datetime.now(ZoneInfo(cfg.timezone))
     tomorrow = started.date() + timedelta(days=1)
-    read = _Read(started, messages, events, coverage, earlier=[], due_tomorrow=False,
+    read = _Read(started, messages, events, coverage, earlier=[], re_reminder=False,
                  event_tomorrow=any(e.start.date() == tomorrow for e in events))
     # In ics mode the run reaches none of IO's ports while it writes the Brief.
     written = _write(cfg, Options(demo=True), IO.real(), State(cfg.resolved_state_path()), read,
