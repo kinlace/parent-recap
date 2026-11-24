@@ -490,3 +490,66 @@ def test_each_event_is_an_ics_file_of_its_own_so_gmail_lists_them_all(count, las
     # By start, named by day and title, with no slash to break a file name.
     assert files[0][0] == "2026-09-29 训练-" + str(count - 1) + ".ics"
     assert "SUMMARY:训练/" + str(count - 1) in files[0][1]
+
+
+# ── Re-reminders (#1053)
+
+def _with_reminders(t: BriefText) -> Brief:
+    """A Kid with tonight's new Action Item and a re-reminder due tomorrow, Monday the 28th, and a
+    Household re-reminder with no due date, which is tomorrow's too."""
+    return parse({"per_kid": [
+        {"kid": "Mia", "action_items": [
+            {"what": "Sign the retki permission slip", "by": "2026-09-29", "who": "Either"},
+            {"what": f"{t.re_reminder}Floorball tournament: bring sportswear and indoor shoes",
+             "by": "2026-09-28", "who": "Mom"}]},
+        {"kid": t.household, "action_items": [{"what": f"{t.re_reminder}Pay the class fee"}]},
+    ], "message_digest": "**Mia**\n- A retki on Thursday"})
+
+
+@pytest.mark.parametrize("language, heading, first, second", [
+    ("en", "📌 Don't forget", "Mon: Mia, Floorball tournament: bring sportswear and indoor shoes",
+     "Mon: Household, Pay the class fee"),
+    ("zh", "📌 还记得", "周一：Mia，Floorball tournament: bring sportswear and indoor shoes",
+     "周一：全家，Pay the class fee"),
+    ("fi", "📌 Muista", "ma: Mia, Floorball tournament: bring sportswear and indoor shoes",
+     "ma: Koko perhe, Pay the class fee"),
+])
+def test_re_reminders_come_in_one_short_block_at_the_end_apart_from_tonight_s_action_items(
+        language, heading, first, second):
+    t = TEXT[language]
+    night = brief_of(_with_reminders(t), t, created=[], ics_events=[])
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+
+    for body, title, line in ((mail.text, f"{heading}:", lambda x: f"• {x}"),
+                              (mail.html, f"<h3>{html.escape(heading)}</h3>",
+                               lambda x: f"<li>{html.escape(x)}</li>")):
+        # Tonight's new Action Item stays under the Action Items; the re-reminders come only in the
+        # block, one short line each, after everything else the Brief tells.
+        assert body.index(t.action_items) < body.index("Sign the retki permission slip") < body.index(title)
+        assert body.count("Floorball tournament") == 1 and body.count("Pay the class fee") == 1
+        assert t.re_reminder.strip() not in body
+        assert body.index(title) < body.index(line(first)) < body.index(line(second)) \
+            < body.index(t.runs_on_own_computer)
+
+
+def test_an_evening_with_only_re_reminders_has_no_empty_action_items_heading():
+    t = TEXT["en"]
+    brief = _with_reminders(t)
+    brief.kids[0].action_items.pop(0)
+    night = brief_of(brief, t, created=[], ics_events=[])
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+
+    assert t.action_items not in mail.text and t.action_items not in mail.html
+    assert "📌 Don't forget:" in mail.text
+
+
+def test_an_evening_with_no_re_reminders_has_no_block():
+    reply, sources = the_normal_night("en")
+    t = TEXT["en"]
+    night = brief_of(written(reply, sources), t)
+
+    [mail] = mails(render.brief(night, [render.Version(t, [PARENT], night.brief)], []))
+
+    assert "Don't forget" not in mail.text and "Don't forget" not in mail.html

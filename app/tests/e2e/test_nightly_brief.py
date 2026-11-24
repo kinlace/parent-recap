@@ -800,8 +800,7 @@ def test_re_reminder_carrying_earlier_refs_is_verified(harness):
     assert earlier["per_kid"][0]["action_items"][0] == \
         {"what": "交图书馆的书", "by": "2026-09-28", "who": "爸爸", "refs": ["g-90"]}
     [email] = harness.sent
-    assert "（再提醒）交图书馆的书<small style='color:#666'> (Leo) · by 9月28日 周一 · 爸爸 · Gmail</small>" \
-        in email.html
+    assert "<li>周一：Leo，交图书馆的书</li>" in email.html  # in the block at the end (#1053)
     # An earlier item that never verified does not become verified by being carried over.
     summary = archived_summary(harness)
     assert [a["verified"] for a in summary["per_kid"][0]["action_items"]] == [True, False]

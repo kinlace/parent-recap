@@ -258,7 +258,8 @@ def test_without_the_model_each_recipient_gets_the_raw_list_in_their_language(ha
 
 @pytest.mark.parametrize("household_in_reply", ["全家", "Household"])  # kept, or translated anyway
 def test_translation_puts_the_programs_own_words_in_the_target_language(harness, household_in_reply):
-    # The Household label, the assignee and the re-reminder prefix come from the text table.
+    # The Household label and the re-reminder prefix come from the text table: each version knows
+    # the re-reminder by it and lists it in its own block at the end (#1053).
     two_languages(harness)
     harness.model_reply[0]["per_kid"].append({"kid": "全家", "notices": [], "action_items": [
         {"what": "（再提醒）交班费", "by": "2026-09-28", "who": "任一", "refs": []}]})
@@ -273,6 +274,6 @@ def test_translation_puts_the_programs_own_words_in_the_target_language(harness,
     assert household == {"kid": "全家", "notices": [],
                          "action_items": [{"what": "交班费", "by": "2026-09-28", "refs": []}]}
     zh, en = harness.sent
-    assert "（再提醒）交班费<small style='color:#666'> (全家) · by 9月28日 周一 · 任一</small>" in zh.html
-    assert "(Reminder) Pay the class fee<small style='color:#666'> (Household) · by Mon 28 Sep · Either</small>" \
-        in en.html
+    assert "<h3>📌 还记得</h3><ul><li>周一：全家，交班费</li></ul>" in zh.html
+    assert "<h3>📌 Don&#x27;t forget</h3><ul><li>Mon: Household, Pay the class fee</li></ul>" in en.html
+    assert "再提醒" not in zh.html and "Reminder" not in en.html
