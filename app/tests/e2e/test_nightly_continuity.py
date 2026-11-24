@@ -308,6 +308,37 @@ def test_old_shape_archives_feed_continuity(harness):
     assert len(harness.sent) == 1
 
 
+def _a_to_do_told_a_week_ago_due_after_the_coming_week(h) -> None:
+    h.write_archive("2026-09-20", {"summary": {"per_kid": [{"kid": "Leo", "notices": [], "action_items": [
+        {"what": "交图书馆的书", "by": "2026-10-05", "who": "爸爸"}]}]}})
+
+
+def test_a_to_do_not_due_tomorrow_brings_no_brief_by_default(harness):
+    _a_to_do_told_a_week_ago_due_after_the_coming_week(harness)
+
+    assert harness.run() == 0
+
+    assert harness.model_calls == []
+    assert harness.sent == []
+
+
+def test_a_household_that_chose_daily_re_reminders_hears_of_a_to_do_every_evening_until_its_eve(harness):
+    # #1054: re_reminders: daily re-reminds an open to-do each evening, however long ago it was told.
+    harness.config["re_reminders"] = "daily"
+    _a_to_do_told_a_week_ago_due_after_the_coming_week(harness)
+    harness.model_reply = {"per_kid": [{"kid": "Leo", "notices": [], "action_items": [
+        {"what": "$reminder 交图书馆的书", "by": "2026-10-05", "who": "爸爸", "refs": []}]}],
+        "calendar_events": [], "message_digest": ""}
+
+    assert harness.run() == 0  # no new messages: the open to-do alone triggers a Brief
+
+    assert harness.model_payload()["earlier_briefs"] == [
+        {"date": "2026-09-20", "per_kid": [{"kid": "Kid B", "notices": [], "action_items": [
+            {"what": "交图书馆的书", "by": "2026-10-05", "who": "爸爸"}]}]}]
+    assert "due tomorrow or later" in harness.model_calls[-1].system_prompt
+    assert len(harness.sent) == 1
+
+
 def test_broken_archive_is_skipped(harness):
     normal_night(harness)
     harness.write_archive("2026-09-26", "{not json")

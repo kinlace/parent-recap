@@ -267,6 +267,9 @@ class Config(BaseModel):
     # A Hosted Household, which `signup household` makes (ADR 0031), rather than one on the family's
     # own computer; the Brief's footer says which (#669)
     hosted: bool = False
+    # When the Brief re-reminds an earlier Action Item: `once`, on the evening before it is due
+    # (#1051), or `daily`, every evening from the day after it was told until then (#1054)
+    re_reminders: Literal["once", "daily"] = "once"
     kids: list[Kid]
     gmail: GmailConfig = GmailConfig()
     wilma: WilmaConfig = WilmaConfig()

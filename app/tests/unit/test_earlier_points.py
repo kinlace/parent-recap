@@ -1,6 +1,7 @@
 """The earlier Briefs' points tonight's Brief gets (archive.recent_points), and whether one of
-their to-dos makes a quiet night worth a Brief (archive.has_due_tomorrow). An earlier to-do is
-re-reminded only on the evening before it is due (#1051), however long ago it was first told."""
+their to-dos makes a quiet night worth a Brief (archive.has_re_reminder). An earlier to-do is
+re-reminded only on the evening before it is due (#1051), however long ago it was first told,
+unless the Household chose to be re-reminded every evening until then (#1054)."""
 from __future__ import annotations
 
 import json
@@ -61,7 +62,38 @@ def test_an_older_night_that_was_never_delivered_gives_nothing(tmp_path):
 def test_only_a_to_do_due_tomorrow_makes_a_quiet_night_worth_a_brief(tmp_path):
     cfg = _config(tmp_path)
     _night(cfg, 1, todos=(("Bring boots", "2026-10-11"), ("Pay the trip", "2026-10-13")))
-    assert not archive.has_due_tomorrow(archive.recent_points(cfg, TODAY), TODAY)
+    assert not archive.has_re_reminder(archive.recent_points(cfg, TODAY), TODAY)
 
     _night(cfg, 2, todos=(("Sign the slip", "2026-10-12"),))
-    assert archive.has_due_tomorrow(archive.recent_points(cfg, TODAY), TODAY)
+    assert archive.has_re_reminder(archive.recent_points(cfg, TODAY), TODAY)
+
+
+# ── With re_reminders: daily (#1054), every evening until the evening before it is due
+
+def _daily(tmp_path) -> Config:
+    return Config.model_validate({**default_config(), "archive": {"dir": str(tmp_path)}, "re_reminders": "daily"})
+
+
+def test_re_reminders_are_once_unless_the_household_chose_daily(tmp_path):
+    assert _config(tmp_path).re_reminders == "once"
+    assert _daily(tmp_path).re_reminders == "daily"
+
+
+def test_with_daily_an_older_night_gives_every_to_do_not_yet_due(tmp_path):
+    cfg = _daily(tmp_path)
+    _night(cfg, 9, notice="Autumn break next week",
+           todos=(("Sign the permission slip", "2026-10-12"), ("Order photos", "2026-10-20"),
+                  ("Bring boots", "2026-10-11"), ("No date", "")))
+
+    assert _points(cfg) == [("2026-10-02", [], ["Sign the permission slip", "Order photos"])]
+
+
+def test_with_daily_a_to_do_due_later_makes_a_quiet_night_worth_a_brief(tmp_path):
+    cfg = _daily(tmp_path)
+    _night(cfg, 1, todos=(("Bring boots", "2026-10-11"),))
+    assert not archive.has_re_reminder(archive.recent_points(cfg, TODAY), TODAY, "daily")
+
+    _night(cfg, 2, todos=(("Pay the trip", "2026-10-15"),))
+    points = archive.recent_points(cfg, TODAY)
+    assert archive.has_re_reminder(points, TODAY, "daily")
+    assert not archive.has_re_reminder(points, TODAY, "once")

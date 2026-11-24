@@ -1,0 +1,97 @@
+covers: [re-reminder, empty-night]
+note: >
+  Tuesday night, no new Messages, in a Household that chose `re_reminders: daily` (#1054). The
+  night of re-reminder-due-soon, where `once` re-reminds nothing: here Aino's to-do due Thursday
+  and Eero's due in 7 days both come again, each once though Monday's Brief already re-reminded
+  Aino's. The rubber boots were due today and are past.
+now: 2026-10-06T21:00:00+03:00
+household:
+  timezone: Europe/Helsinki
+  re_reminders: daily
+  kids:
+    - name: Virtanen Aino
+      everyday_name: Aino
+      aliases: [小艾, Ainoliina]
+      grade: 4
+      class_name: 4B
+      school: Kilo School
+      activities: [football (FC Kilo T2016), 中文课]
+    - name: Virtanen Eero
+      everyday_name: Eero
+      aliases: [Eetu, 小E]
+      grade: 1
+      class_name: 1A
+      school: Kilo School
+      activities: [floorball (Salibandy Eagles), piano (Musiikkikoulu Forte)]
+earlier_briefs:
+  - date: "2026-10-04"
+    per_kid:
+      - kid: Aino
+        notices: []
+        action_items:
+          - what: 交 retki 签字同意书（lupalappu）
+            by: "2026-10-08"
+            who: 任一
+            refs: [w-retki-1004]
+            ref_sources: { w-retki-1004: [wilma] }
+            source: [wilma]
+            verified: true
+      - kid: Eero
+        notices: []
+        action_items:
+          - what: 网上订购班级照片
+            by: "2026-10-13"
+            who: 任一
+            refs: [gm-kuvat-1004]
+            ref_sources: { gm-kuvat-1004: [gmail] }
+            source: [gmail]
+            verified: true
+          - what: 带雨靴（kumisaappaat）去学校
+            by: "2026-10-06"
+            who: 任一
+            refs: [w-saappaat-1004]
+            ref_sources: { w-saappaat-1004: [wilma] }
+            source: [wilma]
+            verified: true
+  - date: "2026-10-05"
+    per_kid:
+      - kid: Aino
+        notices: []
+        action_items:
+          - what: （再提醒）交 retki 签字同意书（lupalappu）
+            by: "2026-10-08"
+            who: 任一
+            refs: [w-retki-1004]
+            ref_sources: { w-retki-1004: [wilma] }
+            source: [wilma]
+            verified: true
+expect:
+  action_items:
+    - {
+        kid: Aino,
+        what: [lupalappu, lupalap, suostum, 同意书, permission, consent],
+        by: 2026-10-08,
+      }
+    - {
+        kid: Eero,
+        what: [班级照片, luokkakuva, kuva, class photo, photo],
+        by: 2026-10-13,
+      }
+  notices:
+    must:
+      - { text: [再提醒, muistutus, (reminder)], where: action_items }
+    must_not:
+      - {
+          text:
+            [
+              kumisaappaat,
+              kumisaap,
+              saappa,
+              saapas,
+              雨靴,
+              rubber boots,
+              wellies,
+              rain boots,
+            ],
+          where: action_items,
+        }

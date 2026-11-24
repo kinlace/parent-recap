@@ -175,3 +175,12 @@ def test_the_instructions_explain_the_placeholders_the_payload_has(masked, kids_
 
     assert (ai_filter.INSTRUCTION in prompt) is placeholders
     assert (kid_placeholders.INSTRUCTION in prompt) is kids
+
+
+def test_the_instructions_re_remind_a_to_do_as_the_household_chose():
+    once = system_prompt("en")
+    daily = system_prompt("en", re_reminders="daily")
+
+    assert "An earlier action item due tomorrow, which" in once
+    assert "An earlier action item due tomorrow or later, which" in daily
+    assert "An earlier action item due tomorrow, which" not in daily

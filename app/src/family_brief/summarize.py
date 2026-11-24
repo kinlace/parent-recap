@@ -95,8 +95,21 @@ Earlier Briefs (earlier_briefs in the payload):
 - Use them only to stay consistent. If today's messages change something said before (lineup, time or place changed), say clearly what changed
 - Where today brings no new information, don't reach the opposite conclusion of before. For example, if a kid wasn't in an earlier lineup, don't warn about a clash as if they were playing in that match
 - Don't repeat earlier notices as they were, unless the thing happens within 2 days or relates to today's new messages
-- An earlier action item due tomorrow, which today's messages don't show as done or cancelled, goes into today's action_items again: start its what with "$reminder", and keep that item's refs as they were (write [] if it had none). Don't list again those due on any other day: one due later is reminded on the evening before it, and one due today or earlier is past
+- $re_reminder_rule
 """)
+
+# When an earlier Action Item comes again, as the Household chose in `re_reminders`: on the evening
+# before it is due (#1051), or every evening until then (#1054). Each keeps $reminder for the prefix.
+_RE_REMINDER_RULES = {
+    "once": "An earlier action item due tomorrow, which today's messages don't show as done or cancelled, "
+            "goes into today's action_items again: start its what with \"$reminder\", and keep that item's "
+            "refs as they were (write [] if it had none). Don't list again those due on any other day: one "
+            "due later is reminded on the evening before it, and one due today or earlier is past",
+    "daily": "An earlier action item due tomorrow or later, which today's messages don't show as done or "
+             "cancelled, goes into today's action_items again, once, however many earlier Briefs have it: "
+             "start its what with \"$reminder\", and keep that item's refs as they were (write [] if it had "
+             "none). Don't list again those due today or earlier: they are past",
+}
 
 
 _PLACEHOLDERS = f"\nPlaceholders:\n- {ai_filter.INSTRUCTION}\n"
@@ -115,18 +128,19 @@ Group digests:
 
 
 def system_prompt(language: str, t: BriefText | None = None, masked: bool = False, kids_masked: bool = False,
-                  digests: bool = False) -> str:
+                  digests: bool = False, re_reminders: str = "once") -> str:
     """The summarize instructions, asking for a Brief in `language` with its program text `t`
     (by default the reviewed table), and saying how to treat placeholders when the payload is
     `masked`, and the Kids' when `kids_masked`, and asking for the group digests when tonight's
-    messages include a group's that wants one (`digests`). A Finnish Brief has no Finnish words to
-    translate."""
+    messages include a group's that wants one (`digests`), and re-reminding an earlier to-do as
+    the Household's `re_reminders` says. A Finnish Brief has no Finnish words to translate."""
     t = t or TEXT[language]
     mom, dad, either = t.who
     keep_finnish = "" if is_finnish(language) else f". {FINNISH_TERMS}"
+    rule = Template(_RE_REMINDER_RULES[re_reminders]).substitute(reminder=t.re_reminder)
     return _SYSTEM_PROMPT.substitute(language=t.language_name, keep_finnish=keep_finnish, quotes=t.quotes,
                                      household=t.household, mom=mom, dad=dad, either=either,
-                                     reminder=t.re_reminder) \
+                                     re_reminder_rule=rule) \
         + (_GROUP_DIGESTS.substitute(language=t.language_name) if digests else "") \
         + (_PLACEHOLDERS if masked else "") + (_KID_PLACEHOLDERS if masked and kids_masked else "")
 
@@ -379,7 +393,8 @@ def summarize_reply(cfg: Config, messages: list[Message], upcoming_events: list[
     t = languages.text(cfg, language)
     groups = digest_groups(messages)
     reply = call_llm_filtered(cfg, intro, payload,
-                              lambda masked, kids: system_prompt(language, t, masked, kids, bool(groups)),
+                              lambda masked, kids: system_prompt(language, t, masked, kids, bool(groups),
+                                                                          cfg.re_reminders),
                               t.placeholder_words(), placeholders, drop=NOT_FOR_THE_MODEL, budget=budget)
     brief = parse(reply.data)
     _wanted_groups(brief, groups)
