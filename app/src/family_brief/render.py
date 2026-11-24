@@ -6,7 +6,7 @@ from __future__ import annotations
 import html as _h
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Union
 from zoneinfo import ZoneInfo
 
@@ -14,7 +14,7 @@ from . import week_ahead, wilma_egress
 from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
-from .brief_text import PRODUCT_NAME, BriefText, recommend_link, reviewed_language, settings_help
+from .brief_text import PRODUCT_NAME, TEXT, BriefText, recommend_link, reviewed_language, settings_help
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, failed_sign_in
 from .utils.dates import to_local
 
@@ -145,6 +145,37 @@ def nothing_read(coverage: dict[str, dict], date_str: str, assistant: str, t: Br
 def _action_items(brief: Brief) -> list[tuple[str, ActionItem]]:
     """Every Action Item in the Brief, each with its Kid."""
     return [(k.kid or "", a) for k in brief.kids for a in k.action_items]
+
+
+def _reminder_prefix(a: ActionItem, t: BriefText) -> str | None:
+    """The prefix the model starts a re-reminded Action Item's `what` with, in `t`'s language or a
+    reviewed one (a failed translation's version keeps the original's), or None for a new one."""
+    return next((p for p in (t.re_reminder, *(x.re_reminder for x in TEXT.values()))
+                 if a.what.startswith(p)), None)
+
+
+def _new_action_items(brief: Brief, t: BriefText) -> list[tuple[str, ActionItem]]:
+    """Tonight's new Action Items, which the Action Items list; the re-reminders go in the block at
+    the end (#1053)."""
+    return [(kid, a) for kid, a in _action_items(brief) if _reminder_prefix(a, t) is None]
+
+
+def _dont_forget(brief: Brief, date_str: str, t: BriefText) -> list[str]:
+    """The re-reminded Action Items as the block at the end of the Brief writes them, one short line
+    each: the weekday it is due, its Kid and what to do, without the prefix (#1053). A re-reminder is
+    due tomorrow, so one whose due date can't be read gets tomorrow's weekday."""
+    tomorrow = date.fromisoformat(date_str) + timedelta(days=1)
+    lines = []
+    for kid, a in _action_items(brief):
+        if (prefix := _reminder_prefix(a, t)) is None:
+            continue
+        try:
+            due = date.fromisoformat((a.by or "")[:10])
+        except ValueError:
+            due = tomorrow
+        lines.append(t.dont_forget_item.format(day=t.weekdays[due.weekday()], kid=kid or t.household,
+                                               what=a.what.removeprefix(prefix).strip()))
+    return lines
 
 
 def _action_meta(kid: str, a: ActionItem, t: BriefText) -> str:
@@ -360,7 +391,7 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                      else _h.escape(t.held_back_read_in.format(source=h.source_name)))
             parts.append(f"<li>{_h.escape(h.label(t))} · {where}</li>")
         parts.append("</ul>")
-    all_actions = _action_items(brief)
+    all_actions = _new_action_items(brief, t)
     if all_actions:
         parts.append(f"<h3>{t.action_items}</h3><ul>")
         for kid, a in all_actions:
@@ -385,6 +416,9 @@ def _daily_brief_html(brief: Brief, calendar_created: list[dict],
                          + (f"<br><small style='color:#666'>{about}</small>" if about else "") + "</li>")
         parts.append("</ul>")
     parts.append(_week_html(brief.week, t))
+    if reminders := _dont_forget(brief, date_str, t):
+        parts.append(f"<h3>{_h.escape(t.dont_forget)}</h3><ul>"
+                     + "".join(f"<li>{_h.escape(line)}</li>" for line in reminders) + "</ul>")
     if note:
         parts.append(f"<p style='color:#a33'>{_h.escape(note)}</p>")
     if coverage:
@@ -430,7 +464,7 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
         parts += ["", _group_heading(g.group), g.text]
     if held_back:
         parts += ["", *held_back]
-    actions = _action_items(brief)
+    actions = _new_action_items(brief, t)
     if actions:
         parts += ["", t.action_items]
         parts += [f"• {a.what} {_action_meta(kid, a, t)}".rstrip() for kid, a in actions]
@@ -443,6 +477,8 @@ def _format_imessage_body(brief: Brief, calendar_created: list[dict], date_str: 
                 parts.append(f"   {about}")
     if week := _week_lines(brief.week, t):
         parts += ["", *week]
+    if reminders := _dont_forget(brief, date_str, t):
+        parts += ["", t.dont_forget_line, *(f"• {line}" for line in reminders)]
     return "\n".join(parts)
 
 

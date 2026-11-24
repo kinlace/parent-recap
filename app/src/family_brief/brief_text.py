@@ -123,6 +123,11 @@ class BriefText:
     week_ahead_line: str
     clock: str                          # {hour} {minute}
     week_more: str                      # {n}
+    # The block at the end of the Brief with the re-reminded Action Items, apart from tonight's new
+    # ones (#1053): its heading, the plain-text one, and a line: {day} a short weekday, {kid}, {what}
+    dont_forget: str
+    dont_forget_line: str
+    dont_forget_item: str
     # A Kid's next school day when its hours differ from the usual ones (ADR 0054): {kid}, {date}
     # as `on` writes it, {hours} and {usual}, each two `school_time`s with a dash
     school_hours: str
@@ -256,6 +261,9 @@ EN = BriefText(
     week_ahead_line="🗓️ Next week:",
     clock="{hour:02}:{minute:02}",
     week_more="…and {n} more",
+    dont_forget="📌 Don't forget",
+    dont_forget_line="📌 Don't forget:",
+    dont_forget_item="{day}: {kid}, {what}",
     school_hours="🕒 {kid}, {date}: {hours} (normally {usual})",
     school_time="{hour}:{minute:02}",
     written_by="Written by {assistant}",
@@ -357,6 +365,9 @@ ZH = BriefText(
     week_ahead_line="🗓️ 下周安排:",
     clock="{hour:02}:{minute:02}",
     week_more="……还有 {n} 项",
+    dont_forget="📌 还记得",
+    dont_forget_line="📌 还记得:",
+    dont_forget_item="{day}：{kid}，{what}",
     school_hours="🕒 {kid} {date}：{hours}（平时 {usual}）",
     school_time="{hour}:{minute:02}",
     written_by="由 {assistant} 生成",
@@ -470,6 +481,9 @@ FI = BriefText(
     week_ahead_line="🗓️ Ensi viikolla:",
     clock="klo {hour}.{minute:02}",
     week_more="…ja {n} muuta",
+    dont_forget="📌 Muista",
+    dont_forget_line="📌 Muista:",
+    dont_forget_item="{day}: {kid}, {what}",
     school_hours="🕒 {kid} {date}: {hours} (yleensä {usual})",
     school_time="{hour}.{minute:02}",
     written_by="Kirjoittanut: {assistant}",
