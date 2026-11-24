@@ -41,7 +41,7 @@
     "ai.claude.not-installed": "Claude Codea ei ole vielä tällä Macilla. Avaa Pääte (Terminal), liitä tämä rivi ja paina Return. Kirjoita sitten claude, paina Return ja kirjaudu Claude-tililläsi. Sivu tarkistaa tilanteen automaattisesti uudelleen.",
     "ai.claude.signed-out": "Claude Code ei ole kirjautunut. Avaa Pääte (Terminal), kirjoita claude, paina Return ja kirjaudu Claude Pro- tai Max-tililläsi. Sivu tarkistaa tilanteen automaattisesti uudelleen.",
     "ai.claude.not-installed.windows": "Claude Codea ei vielä ole tällä tietokoneella. Ei haittaa: tämän jälkeen tekoälyn vaiheessa tämä sivu asentaa sen ja avaa Clauden kirjautumisen.",
-    "ai.claude.not-installed.app": "Sinulla on Claude-sovellus, mutta iltainen kooste tarvitsee Claude Coden: se on erillinen ohjelma, joka toimii Päätteessä (Terminal) samalla Claude-tilillä. Avaa Pääte, liitä tämä rivi ja paina Return. Kirjoita sitten claude, paina Return ja kirjaudu Claude-tililläsi. Sivu tarkistaa tilanteen automaattisesti uudelleen.",
+    "ai.claude.not-installed.app": "Sinulla on Claude-sovellus, mutta iltakooste tarvitsee Claude Coden: se on erillinen ohjelma, joka toimii Päätteessä (Terminal) samalla Claude-tilillä. Avaa Pääte, liitä tämä rivi ja paina Return. Kirjoita sitten claude, paina Return ja kirjaudu Claude-tililläsi. Sivu tarkistaa tilanteen automaattisesti uudelleen.",
     "ai.claude.signed-out.windows": "Claude Code ei ole kirjautunut tällä tietokoneella. Ei haittaa: tämän jälkeen tekoälyn vaiheessa kirjaudut iltakoostetta varten Claude-tililläsi (Pro tai Max).",
     "ai.claude.check-failed": "Claude Coden tarkistus ei valmistunut. Paina Tarkista uudelleen.",
     "ai.codex.ready": "Codex on asennettu ja kirjautunut.",

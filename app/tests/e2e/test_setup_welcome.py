@@ -150,7 +150,7 @@ def test_with_the_claude_app_but_no_claude_code_the_check_says_the_app_is_there(
     (harness.home / "Applications" / "Claude.app").mkdir(parents=True)
 
     assert check_ai(page.url, "claude").json() == {
-        "result": "not-installed", "ai": "claude", "app": True,
+        "result": "not-installed", "ai": "claude", "desktop_app": True,
         "install": "curl -fsSL https://claude.ai/install.sh | bash"}
 
     ai("claude")
@@ -168,6 +168,9 @@ def test_the_claude_app_s_line_names_the_difference_and_keeps_the_install_line_i
         line = table.get("ai.claude.not-installed.app", "")
         assert "Claude Code" in line, language
         assert line != table["ai.claude.not-installed"], language
+        # Today's steps follow: paste the line in Terminal, then sign in with `claude`.
+        steps = re.split(r"(?<=[.。])\s*", table["ai.claude.not-installed"], maxsplit=1)[1]
+        assert line.endswith(steps.removeprefix("Avaa Pääte (Terminal), ")), language
 
 
 @pytest.mark.macos

@@ -297,7 +297,7 @@ async function checkAI() {
     return;
   }
   if (check !== ai.checking) return; // the parent picked the other one meanwhile
-  showAI(name, out.result, out.install, out.reason, out.app);
+  showAI(name, out.result, out.install, out.reason, out.desktop_app);
   if (out.result !== "ready" && !document.getElementById("welcome").hidden) {
     ai.timer = setTimeout(checkAI, RECHECK_MS);
   }
@@ -314,15 +314,15 @@ function welcomeGoesOn(name, result) {
   return name === "codex" || (name === "claude" && page.system === "windows");
 }
 
-// `app`: the AI's desktop app is here but isn't the program the Brief runs, so the message says so
-// (the Claude app, #1059).
-function showAI(name, result, install, reason, app) {
+// `desktopApp`: the AI's desktop app is here but isn't the program the Brief runs, so the message
+// says so (the Claude app, #1059).
+function showAI(name, result, install, reason, desktopApp) {
   ai.result = result;
   const status = document.getElementById("ai-status");
   status.dataset.result = result;
   const message = document.getElementById("ai-message");
   message.dataset.text = result === "checking" ? "welcome.ai.checking"
-    : `ai.${name}.${result}${app ? ".app" : ""}`;
+    : `ai.${name}.${result}${desktopApp ? ".app" : ""}`;
   message.textContent = t(message.dataset.text);
   showReason("ai", message.dataset.text, reason);
   status.classList.toggle("fail", result === "check-failed");
