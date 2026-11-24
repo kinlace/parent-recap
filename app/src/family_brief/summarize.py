@@ -15,7 +15,7 @@ from .brief import Brief, EarlierBrief, RunNotes, looks_cut_off, parse
 from .brief_text import TEXT, BriefText
 from .languages import FINNISH_TERMS, is_finnish
 from .collectors.base import CalendarEvent, Message
-from .config import Config
+from .config import Config, ReReminders
 from .llm import CALL_BUDGET, LLMReply
 
 _ = CalendarEvent  # re-export-friendly
@@ -100,7 +100,7 @@ Earlier Briefs (earlier_briefs in the payload):
 
 # When an earlier Action Item comes again, as the Household chose in `re_reminders`: on the evening
 # before it is due (#1051), or every evening until then (#1054). Each keeps $reminder for the prefix.
-_RE_REMINDER_RULES = {
+_RE_REMINDER_RULES: dict[ReReminders, str] = {
     "once": "An earlier action item due tomorrow, which today's messages don't show as done or cancelled, "
             "goes into today's action_items again: start its what with \"$reminder\", and keep that item's "
             "refs as they were (write [] if it had none). Don't list again those due on any other day: one "
@@ -128,7 +128,7 @@ Group digests:
 
 
 def system_prompt(language: str, t: BriefText | None = None, masked: bool = False, kids_masked: bool = False,
-                  digests: bool = False, re_reminders: str = "once") -> str:
+                  digests: bool = False, re_reminders: ReReminders = "once") -> str:
     """The summarize instructions, asking for a Brief in `language` with its program text `t`
     (by default the reviewed table), and saying how to treat placeholders when the payload is
     `masked`, and the Kids' when `kids_masked`, and asking for the group digests when tonight's
