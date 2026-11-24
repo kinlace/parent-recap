@@ -8,7 +8,7 @@ from .. import languages
 from ..brief import ActionItem, Brief, EarlierBrief, KidSection, RunNotes, from_archive, to_archive
 from ..brief_text import PRODUCT_NAME, BriefText
 from ..collectors.base import Message
-from ..config import Config
+from ..config import Config, ReReminders
 from ..summarize import third_parties
 from ..week_ahead import NIGHTS_BACK, EarlierNight
 
@@ -106,7 +106,7 @@ def recent_points(cfg: Config, today: str, days: int = 3) -> list[EarlierBrief]:
     return out
 
 
-def _to_remind(item: ActionItem, today: str, how: str) -> bool:
+def _to_remind(item: ActionItem, today: str, re_reminders: ReReminders) -> bool:
     """Whether tonight's Brief re-reminds `item`: due tomorrow, or with `daily` (#1054) due
     tomorrow or later. One without a readable due date is never re-reminded."""
     try:
@@ -114,7 +114,7 @@ def _to_remind(item: ActionItem, today: str, how: str) -> bool:
     except ValueError:
         return False
     days_left = (due - date.fromisoformat(today)).days
-    return days_left == 1 or (how == "daily" and days_left > 1)
+    return days_left == 1 or (re_reminders == "daily" and days_left > 1)
 
 
 def earlier_nights(cfg: Config, today: str, days: int = NIGHTS_BACK) -> list[EarlierNight]:
@@ -136,7 +136,7 @@ def earlier_nights(cfg: Config, today: str, days: int = NIGHTS_BACK) -> list[Ear
     return out
 
 
-def has_re_reminder(points: list[EarlierBrief], today: str, how: str = "once") -> bool:
+def has_re_reminder(points: list[EarlierBrief], today: str, re_reminders: ReReminders = "once") -> bool:
     """Whether tonight's Brief re-reminds an earlier to-do: one due tomorrow (#1051), or with
-    `how` daily one due tomorrow or later (#1054), so a quiet night still sends a Brief."""
-    return any(_to_remind(item, today, how) for day in points for kid in day.kids for item in kid.action_items)
+    `re_reminders` daily one due tomorrow or later (#1054), so a quiet night still sends a Brief."""
+    return any(_to_remind(item, today, re_reminders) for day in points for kid in day.kids for item in kid.action_items)

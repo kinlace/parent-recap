@@ -254,6 +254,11 @@ class RunReportConfig(BaseModel):
     enabled: bool | None = None
 
 
+# When the Brief re-reminds an earlier Action Item: `once`, on the evening before it is due
+# (#1051), or `daily`, every evening from the day after it was told until then (#1054).
+ReReminders = Literal["once", "daily"]
+
+
 # Sections an older version wrote that this one no longer reads: a config with them still loads,
 # since Config ignores keys it doesn't know, and is still Parent Recap's (uninstall.py). Pilot
 # feedback's was removed in #939.
@@ -267,9 +272,7 @@ class Config(BaseModel):
     # A Hosted Household, which `signup household` makes (ADR 0031), rather than one on the family's
     # own computer; the Brief's footer says which (#669)
     hosted: bool = False
-    # When the Brief re-reminds an earlier Action Item: `once`, on the evening before it is due
-    # (#1051), or `daily`, every evening from the day after it was told until then (#1054)
-    re_reminders: Literal["once", "daily"] = "once"
+    re_reminders: ReReminders = "once"   # not asked in setup; the manage skill changes it
     kids: list[Kid]
     gmail: GmailConfig = GmailConfig()
     wilma: WilmaConfig = WilmaConfig()

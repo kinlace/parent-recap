@@ -167,9 +167,11 @@ def _split_action_items(brief: Brief, date_str: str,
             due = date.fromisoformat((a.by or "")[:10])
         except ValueError:
             due = tomorrow
-        # Within the coming week its weekday is enough; one further off, which re_reminders: daily
-        # brings (#1054), says its date, so a Monday a week away doesn't read as tomorrow.
-        day = t.weekdays[due.weekday()] if (due - tomorrow).days < 6 else t.on(due)
+        # Tomorrow and the 5 days after it each have a weekday no other day in the week ahead has,
+        # so the weekday is enough; one further off, which re_reminders: daily brings (#1054), says
+        # its date, so a Monday a week away doesn't read as tomorrow.
+        days_after_tomorrow = (due - tomorrow).days
+        day = t.weekdays[due.weekday()] if days_after_tomorrow <= 5 else t.on(due)
         reminders.append(t.dont_forget_item.format(day=day, kid=kid or t.household,
                                                    what=a.what.removeprefix(prefix).strip()))
     return new, reminders
