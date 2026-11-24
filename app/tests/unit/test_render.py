@@ -1,6 +1,8 @@
 """The evening run's render core on its own: each golden night's Brief, as written, in; the mails
 and iMessages each Recipient gets out, compared to the same golden files the end-to-end nights
-make. The Briefs are the nights' model replies (nights.py) with the Sources their refs cite."""
+make. The Briefs are the nights' model replies (nights.py) with the Sources their refs cite. Beside
+them, single pieces of a Brief on their own: the events' order and .ics files, and the Don't Forget
+block of re-reminders (#1053)."""
 from __future__ import annotations
 
 import copy

@@ -28,7 +28,7 @@ _Avoid_: task, todo, 家长要做的事
 
 **Don't Forget** (zh 还记得, fi muista):
 The short block at the end of the Brief with the re-reminded Action Items: earlier ones due tomorrow, one line each (weekday, Kid, what to do). The model marks a re-reminder with its prefix; the program lists it here instead of among tonight's new Action Items, so repeats look different from news.
-_Avoid_: reminders section, 再提醒
+_Avoid_: reminders section
 
 **Week Ahead** (zh 下周安排, fi ensi viikolla):
 The section of Sunday's Brief that lists, day by day, the Action Items due and the calendar events known for the coming Monday to Friday. The program makes it from the archive, tonight's Brief and tonight's Source events, without the model, and lists each thing once (ADR 0053).
