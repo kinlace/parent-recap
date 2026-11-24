@@ -14,7 +14,8 @@ from . import week_ahead, wilma_egress
 from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
-from .brief_text import PRODUCT_NAME, TEXT, BriefText, recommend_link, reviewed_language, settings_help
+from .brief_text import (PRODUCT_NAME, TEXT, BriefText, change_video, recommend_link, reviewed_language,
+                         settings_help)
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, failed_sign_in
 from .utils.dates import to_local
 
@@ -635,7 +636,8 @@ def unread_sender(t: BriefText, write_to: str | None) -> str:
 class EndNote:
     """The last lines of every Brief: which version sent it, the hosted one or the family's own
     computer's; from the family's own computer, the link to how to change a setting (#824), which a
-    Hosted Household changes through the maintainers; the link that recommends Parent Recap to other
+    Hosted Household changes through the maintainers, and in a language with its video, the video of
+    changing it by asking one's AI (#1061); the link that recommends Parent Recap to other
     parents on WhatsApp (#845); then the `sender` line, if any."""
     t: BriefText
     hosted: bool
@@ -655,6 +657,8 @@ class EndNote:
     @property
     def _links(self) -> list[tuple[str, str]]:
         settings = [] if self.hosted else [(self.t.change_settings, settings_help(self.t))]
+        if not self.hosted and (video := change_video(self.t)):
+            settings.append((self.t.change_video, video))
         return settings + [(self.t.recommend, recommend_link(self.t))]
 
     @property
