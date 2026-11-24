@@ -575,7 +575,7 @@ MACOS_WORDS = {
 # Texts the page shows only on macOS, such as Claude's sign-in read from its pseudo-terminal, or
 # the chat's.
 MACOS_ONLY_TEXTS = re.compile(
-    r"^(claude\.(waiting|sign-in-failed|timeout)$|chat\."
+    r"^(claude\.(waiting|sign-in-failed|timeout)$|ai\.claude\.not-installed\.app$|chat\."
     r"|keychain\."
     r"|open\.app-not-opened$|wilma\.passwords$|(health|finish)\.fail\.ai$"
     r"|finish\.wake\.(set|other-schedule|cancelled|no-dialog)$|finish\.replace$)"

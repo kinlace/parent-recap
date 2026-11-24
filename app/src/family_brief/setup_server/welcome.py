@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .. import failure, setup_save
+from ..llm import claude as claude_code
 from ..system import desktop, profile, secrets
 from . import ai, gmail
 from .context import (LANGUAGES, Action, Phase, Reply, ais, chats, claude_missing, not_offered,
@@ -74,6 +75,10 @@ class Welcome(Phase):
         program = ai.program(self.context, name)
         if program is None:
             missing = claude_missing() if name == "claude" else {"result": "not-installed"}
+            # With the Claude app here, the page says it isn't Claude Code: the family installs
+            # Claude Code from Terminal all the same (#1059).
+            if "install" in missing and claude_code.desktop_app():
+                missing["app"] = True
             return HTTPStatus.OK, {**missing, "ai": name}
         return HTTPStatus.OK, {**ai.status(self.context, program, name), "ai": name}
 

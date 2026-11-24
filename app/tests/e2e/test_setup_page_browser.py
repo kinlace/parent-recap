@@ -33,6 +33,7 @@ from fake_sources import EEPOS_PASSWORD, EVAKA_PASSWORD
 from family_brief import (failure, gateway, linked_device, ops, setup_connect, setup_gmail,
                           setup_wilma, update)
 from family_brief.config import Config
+from family_brief.llm import claude as claude_backend
 from family_brief.sources.fi.evaka import collector as evaka
 from family_brief.sources.fi.myclub import collector as myclub
 from fake_system import MACOS
@@ -1480,6 +1481,26 @@ def test_welcome_offers_to_check_again_only_while_it_can_t_go_on(tab, ai, on, na
     # Windows (#707); on a Mac Claude Code's sign-in needs it installed from Terminal (#475).
     tab.route(re.compile(r"/api/ai$"), lambda route: route.fulfill(json={"result": "signed-out"}))
     picked_shows("signed-out")
+
+
+@pytest.mark.macos
+def test_with_the_claude_app_welcome_says_claude_code_is_another_program_and_keeps_the_line(
+        tab, harness, ai, monkeypatch):
+    # #1059: the Claude app isn't Claude Code, and a parent who sees it in the Dock is told so.
+    in_english(tab)
+    claude = tab.get_by_role("radio", name=text("welcome.ai.claude"))
+    claude.check()
+    expect(tab.locator("#ai-message")).to_have_text(text("ai.claude.not-installed"))
+    tab.get_by_role("radio", name=text("welcome.ai.gateway")).check()
+
+    monkeypatch.setattr(claude_backend, "DESKTOP_APPS", ("~/Applications/Claude.app",))
+    (harness.home / "Applications" / "Claude.app").mkdir(parents=True)
+    claude.check()
+
+    expect(tab.locator("#ai-message")).to_have_text(text("ai.claude.not-installed.app"))
+    expect(tab.locator("#ai-install-line")).to_have_text(
+        "curl -fsSL https://claude.ai/install.sh | bash")
+    expect(button(tab, "continue")).to_be_disabled()
 
 
 @pytest.mark.parametrize("on", ["macos", "windows"])
