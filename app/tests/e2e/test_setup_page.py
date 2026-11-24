@@ -632,6 +632,17 @@ def test_on_windows_chatgpt_has_no_chat_to_continue_in_since_the_skills_are_maco
         assert "$parent-recap" not in table["finish.changes.codex.windows"], language
 
 
+def test_finish_tells_a_parent_they_can_ask_their_ai_to_change_what_the_brief_says_too():
+    """Besides delivery, Finish names one change to the Brief's content the manage skill makes:
+    a WhatsApp group's digest (#1055). The team-asking variants stay delivery-only."""
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        for key in ("finish.changes.claude", "finish.changes.codex"):
+            assert "WhatsApp" in table[key], (language, key)
+        for key in ("finish.changes.claude.windows", "finish.changes.codex.windows",
+                    "finish.changes.gateway"):
+            assert "WhatsApp" not in table[key], (language, key)
+
+
 @pytest.mark.parametrize("on, called", [(MACOS, "macOS "), (WINDOWS, "Windows ")])
 def test_the_page_knows_parent_recap_s_version_and_the_system_for_a_failure_s_report(
         harness, page, on, called):
