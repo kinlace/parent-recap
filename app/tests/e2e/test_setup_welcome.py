@@ -15,6 +15,7 @@ import yaml
 
 from family_brief import setup_server
 from family_brief.config import Config
+from family_brief.llm import claude as claude_backend
 from setup_page import PAGE_DIR, call, check_ai, config_file, inside, welcome
 from setup_page import ai, clock, page  # noqa: F401
 
@@ -138,6 +139,35 @@ def test_a_missing_claude_code_gets_its_native_installer_and_is_checked_again(ha
 
     assert check_ai(page.url, "claude").json() == {"result": "ready", "ai": "claude"}
     assert ["auth", "status"] == harness.commands[-1][1:3]
+
+
+@pytest.mark.macos
+def test_with_the_claude_app_but_no_claude_code_the_check_says_the_app_is_there(
+        harness, page, ai, monkeypatch):
+    # #1059: a parent with the Claude desktop app reads "Claude Code isn't on this Mac" as a
+    # false alarm. The app is no Claude Code, so the install line stays.
+    monkeypatch.setattr(claude_backend, "DESKTOP_APPS", ("~/Applications/Claude.app",))
+    (harness.home / "Applications" / "Claude.app").mkdir(parents=True)
+
+    assert check_ai(page.url, "claude").json() == {
+        "result": "not-installed", "ai": "claude", "app": True,
+        "install": "curl -fsSL https://claude.ai/install.sh | bash"}
+
+    ai("claude")
+    assert check_ai(page.url, "claude").json() == {"result": "ready", "ai": "claude"}
+
+
+def test_the_claude_app_is_looked_for_in_both_applications_folders():
+    assert claude_backend.DESKTOP_APPS == ("/Applications/Claude.app", "~/Applications/Claude.app")
+
+
+def test_the_claude_app_s_line_names_the_difference_and_keeps_the_install_line_in_each_language():
+    text = json.loads((PAGE_DIR / "text.json").read_text())
+
+    for language, table in text.items():
+        line = table.get("ai.claude.not-installed.app", "")
+        assert "Claude Code" in line, language
+        assert line != table["ai.claude.not-installed"], language
 
 
 @pytest.mark.macos

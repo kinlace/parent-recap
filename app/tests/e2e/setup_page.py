@@ -26,7 +26,7 @@ import yaml
 
 from family_brief import ops, setup_save, setup_server
 from family_brief.config import Config
-from family_brief.llm import codex as codex_backend
+from family_brief.llm import claude as claude_backend, codex as codex_backend
 from family_brief.setup_server import Context, Timeouts, finish as finish_step, server as shell
 from family_brief.state import State
 from family_brief.system import jobs
@@ -202,11 +202,13 @@ def refused(url: str) -> bool:
 
 @pytest.fixture
 def ai(harness, monkeypatch):
-    """The Mac's Claude Code and Codex: neither installed until the test installs one."""
+    """The Mac's Claude Code and Codex: neither installed until the test installs one, nor the
+    Claude, Codex or ChatGPT desktop app."""
     bin_dir = harness.home / "bin"
     bin_dir.mkdir()
     monkeypatch.setenv("PATH", str(bin_dir))
     monkeypatch.setattr(codex_backend, "CODEX_BUNDLED", ())  # not this Mac's own apps
+    monkeypatch.setattr(claude_backend, "DESKTOP_APPS", ())
 
     def install(name: str, where: Path = bin_dir) -> None:
         where.mkdir(parents=True, exist_ok=True)

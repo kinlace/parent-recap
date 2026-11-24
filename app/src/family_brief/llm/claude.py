@@ -14,6 +14,11 @@ from ..system import profile, secrets
 from . import parse, retry
 from .backend import Finding, LLMReply
 
+# Where the Claude desktop app sits on a Mac. It is not Claude Code, which the evening Brief runs,
+# but a family who has it may think it is, so the setup page says so (#1059). The Claude Code the
+# app keeps for its Code tab is the app's own copy, updated by the app, so it isn't run.
+DESKTOP_APPS = ("/Applications/Claude.app", "~/Applications/Claude.app")
+
 
 def sessionless_env() -> dict[str, str]:
     # Started from inside a Claude Code session (setup preview, doctor), the parent's session
@@ -38,6 +43,11 @@ def install_line() -> str:
     """The line that installs Claude Code on this system, with its native installer: it installs
     into ~/.local/bin and updates itself, where a global npm install can leave it unable to."""
     return profile.current().install_lines["claude"]
+
+
+def desktop_app() -> bool:
+    """Whether the Claude desktop app is installed here."""
+    return any(os.path.isdir(os.path.expanduser(app)) for app in DESKTOP_APPS)
 
 
 def native_dir() -> Path:
