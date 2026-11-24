@@ -18,9 +18,9 @@ from conftest import NOW, TZ, html_for_golden, ics_files_for_golden, ics_for_gol
 from fake_system import LINUX
 from nights import ENGLISH_REPLY, normal_night
 
-from family_brief import render, update, week_ahead
+from family_brief import brief_text, render, update, week_ahead
 from family_brief.brief import Brief, parse
-from family_brief.brief_text import TEXT, BriefText, recommend_link
+from family_brief.brief_text import TEXT, BriefText, recommend_link, video_help
 from family_brief.actions import ics as ics_action
 from family_brief.collectors.base import CalendarEvent, Message
 from family_brief.summarize import extract_calendar_events
@@ -423,8 +423,9 @@ def test_a_hosted_brief_has_no_video_link():
             assert t.change_video not in text and t.change_video not in page, (language, kind)
 
 
-def test_a_brief_in_an_unreviewed_language_has_no_video_link():
-    t = dataclasses.replace(TEXT["zh"], language_name="Svenska", change_video="Så ändrar du (video)")
+def test_a_brief_in_an_unreviewed_language_has_no_video_link_even_once_english_has_one(monkeypatch):
+    monkeypatch.setitem(brief_text._CHANGE_VIDEO, "en", "https://parentrecap.com/ask-your-ai/en/")
+    t = dataclasses.replace(TEXT["en"], language_name="Svenska", change_video="Så ändrar du (video)")
 
     text, page = every_kind(t, hosted=False)["normal"]
 
@@ -459,7 +460,7 @@ def test_every_brief_links_a_whatsapp_recommendation_in_its_language(language, l
         assert parse_qs(query) == {"text": [message]}, kind
         assert " " not in url and "&" not in query, kind  # the whole message is one encoded value
         # after the version line, the settings link and, in Chinese, the video link
-        assert end.index(line) == (1 if hosted else 3 if language == "zh" else 2), kind
+        assert end.index(line) == (1 if hosted else 2 + (video_help(t) is not None)), kind
         assert (f"<p style='color:#888;font-size:12px'><a href=\"{html.escape(url)}\" style='color:#888;"
                 f"text-decoration:underline'>{html.escape(label)}</a></p>") in page, kind
 

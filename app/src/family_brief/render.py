@@ -14,8 +14,8 @@ from . import week_ahead, wilma_egress
 from . import sources as source_registry
 from .actions import ics as ics_action
 from .brief import ActionItem, Brief
-from .brief_text import (PRODUCT_NAME, TEXT, BriefText, change_video, recommend_link, reviewed_language,
-                         settings_help)
+from .brief_text import (PRODUCT_NAME, TEXT, BriefText, recommend_link, reviewed_language, settings_help,
+                         video_help)
 from .collectors.base import UNREADABLE_MESSAGE, CalendarEvent, failed_sign_in
 from .utils.dates import to_local
 
@@ -656,10 +656,12 @@ class EndNote:
 
     @property
     def _links(self) -> list[tuple[str, str]]:
-        settings = [] if self.hosted else [(self.t.change_settings, settings_help(self.t))]
-        if not self.hosted and (video := change_video(self.t)):
-            settings.append((self.t.change_video, video))
-        return settings + [(self.t.recommend, recommend_link(self.t))]
+        help_links = []
+        if not self.hosted:
+            help_links.append((self.t.change_settings, settings_help(self.t)))
+            if video := video_help(self.t):
+                help_links.append((self.t.change_video, video))
+        return help_links + [(self.t.recommend, recommend_link(self.t))]
 
     @property
     def _version(self) -> str:

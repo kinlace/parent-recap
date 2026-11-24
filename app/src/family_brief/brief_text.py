@@ -557,9 +557,10 @@ def settings_help(t: BriefText) -> str:
 _CHANGE_VIDEO = {"zh": "https://parentrecap.com/ask-your-ai/zh/?utm_source=brief&utm_medium=email"}
 
 
-def change_video(t: BriefText) -> str | None:
+def video_help(t: BriefText) -> str | None:
     """The video on changing Parent Recap by asking one's AI, in the language of `t`, or None for a
-    language without its own video: the Brief then has no such link."""
+    language without its own video: the Brief then has no such link. Unlike `settings_help`, a
+    language without reviewed text gets no English fallback, as nobody narrates it in theirs."""
     return _CHANGE_VIDEO.get(reviewed_language(t)) if t in TEXT.values() else None
 
 
