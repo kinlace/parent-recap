@@ -78,7 +78,7 @@ class Welcome(Phase):
             # With the Claude app here, the page says it isn't Claude Code: the family installs
             # Claude Code from Terminal all the same (#1059).
             if "install" in missing and claude_code.desktop_app():
-                missing["app"] = True
+                missing["desktop_app"] = True
             return HTTPStatus.OK, {**missing, "ai": name}
         return HTTPStatus.OK, {**ai.status(self.context, program, name), "ai": name}
 
