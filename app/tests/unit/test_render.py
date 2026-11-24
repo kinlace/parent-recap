@@ -393,6 +393,44 @@ def test_a_hosted_brief_has_no_settings_link():
             assert t.change_settings not in text and t.change_settings not in page, (language, kind)
 
 
+VIDEO_ZH = "https://parentrecap.com/ask-your-ai/zh/?utm_source=brief&utm_medium=email"
+
+
+def test_a_chinese_brief_from_the_family_computer_links_the_video_after_the_settings_link():
+    t = TEXT["zh"]
+
+    for kind, (text, page) in every_kind(t, hosted=False).items():
+        end = text.rsplit("\n\n", 1)[1].splitlines()
+        assert end[1].startswith(f"{t.change_settings}: "), kind
+        assert end[2] == f"看看怎么改（视频）: {VIDEO_ZH}", kind
+        assert (f"<p style='color:#888;font-size:12px'><a href=\"{html.escape(VIDEO_ZH)}\" style='color:#888;"
+                f"text-decoration:underline'>看看怎么改（视频）</a></p>") in page, kind
+
+
+@pytest.mark.parametrize("language", ["en", "fi"])
+def test_a_brief_in_a_language_without_its_video_has_no_video_link(language):
+    t = TEXT[language]
+
+    for kind, (text, page) in every_kind(t, hosted=False).items():
+        assert "ask-your-ai" not in text and "ask-your-ai" not in page, kind
+        assert t.change_video not in text and t.change_video not in page, kind
+
+
+def test_a_hosted_brief_has_no_video_link():
+    for language, t in TEXT.items():
+        for kind, (text, page) in every_kind(t, hosted=True).items():
+            assert "ask-your-ai" not in text and "ask-your-ai" not in page, (language, kind)
+            assert t.change_video not in text and t.change_video not in page, (language, kind)
+
+
+def test_a_brief_in_an_unreviewed_language_has_no_video_link():
+    t = dataclasses.replace(TEXT["zh"], language_name="Svenska", change_video="Så ändrar du (video)")
+
+    text, page = every_kind(t, hosted=False)["normal"]
+
+    assert "ask-your-ai" not in text and "ask-your-ai" not in page
+
+
 @pytest.mark.parametrize("language, label, message", [
     ("en", "Recommend to other parents",
      "I've been using a free little tool that turns Wilma, school emails and the parents' group chats into "
@@ -420,7 +458,8 @@ def test_every_brief_links_a_whatsapp_recommendation_in_its_language(language, l
         query = urlsplit(url).query
         assert parse_qs(query) == {"text": [message]}, kind
         assert " " not in url and "&" not in query, kind  # the whole message is one encoded value
-        assert end.index(line) == (1 if hosted else 2), kind  # after the version line and the settings link
+        # after the version line, the settings link and, in Chinese, the video link
+        assert end.index(line) == (1 if hosted else 3 if language == "zh" else 2), kind
         assert (f"<p style='color:#888;font-size:12px'><a href=\"{html.escape(url)}\" style='color:#888;"
                 f"text-decoration:underline'>{html.escape(label)}</a></p>") in page, kind
 

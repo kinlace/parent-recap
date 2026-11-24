@@ -136,6 +136,7 @@ class BriefText:
     runs_hosted: str                    # every Brief's footer, from a Hosted Household (#669)
     runs_on_own_computer: str           # every Brief's footer, from the family's own computer
     change_settings: str                # the link after it, to the README's FAQ (#824)
+    change_video: str                   # the link after that, to the video of asking one's AI (#1061)
     recommend: str                      # every Brief's footer link that opens WhatsApp with... (#845)
     recommend_message: str              # ...this message, {link} the website; nothing from the Brief
     unread_sender: str                  # {address}, when the gateway's address nobody reads sent it
@@ -270,6 +271,7 @@ EN = BriefText(
     runs_hosted="Parent Recap hosted version, running on the parentrecap.com server",
     runs_on_own_computer="Parent Recap, running on your own computer",
     change_settings="Change settings",
+    change_video="How to change it (video)",
     recommend="Recommend to other parents",
     recommend_message="I've been using a free little tool that turns Wilma, school emails and the parents' "
                       "group chats into one short summary every evening, in the language you choose. "
@@ -374,6 +376,7 @@ ZH = BriefText(
     runs_hosted="Parent Recap 托管版，在 parentrecap.com 的服务器上运行",
     runs_on_own_computer="Parent Recap，在你家的电脑上运行",
     change_settings="修改设置",
+    change_video="看看怎么改（视频）",
     recommend="推荐给其他家长",
     recommend_message="我最近在用一个免费小工具，每晚把 Wilma、学校邮件和家长群的消息整理成一封中文日报，"
                       "孩子要带什么、交什么、有什么活动一眼就清楚，省了不少事。你也可以试试：{link}",
@@ -490,6 +493,7 @@ FI = BriefText(
     runs_hosted="Parent Recapin ylläpidetty versio, joka toimii parentrecap.com-palvelimella",
     runs_on_own_computer="Parent Recap, joka toimii omalla tietokoneellasi",
     change_settings="Muuta asetuksia",
+    change_video="Näin muutat sitä (video)",
     recommend="Suosittele muille vanhemmille",
     recommend_message="Olen käyttänyt ilmaista pientä työkalua, joka kokoaa joka ilta Wilman, koulun "
                       "sähköpostit ja vanhempien WhatsApp-ryhmien viestit yhdeksi lyhyeksi koosteeksi "
@@ -546,6 +550,17 @@ def settings_help(t: BriefText) -> str:
     """The README FAQ entry on changing a setting, in the language of `t`: a reviewed one's own,
     or the English one for any other language."""
     return _SETTINGS_HELP.format(readme=_README.get(reviewed_language(t), _README["en"]))
+
+
+# The website's video of a parent changing Parent Recap by asking their own AI (#1061), for each
+# reviewed language that has one yet. The UTM tags tell the website's clicks from the Brief apart.
+_CHANGE_VIDEO = {"zh": "https://parentrecap.com/ask-your-ai/zh/?utm_source=brief&utm_medium=email"}
+
+
+def change_video(t: BriefText) -> str | None:
+    """The video on changing Parent Recap by asking one's AI, in the language of `t`, or None for a
+    language without its own video: the Brief then has no such link."""
+    return _CHANGE_VIDEO.get(reviewed_language(t)) if t in TEXT.values() else None
 
 
 def reviewed_language(t: BriefText) -> str:
