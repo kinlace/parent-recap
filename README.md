@@ -92,6 +92,8 @@ Yes. Once Parent Recap is installed, type `parent-recap demo --to you@example.co
 
 Parent Recap reads Wilma through Antti Karjalainen's [wilma CLI](https://github.com/aikarjal/wilmai) (WilmAI), free and open source under MIT. Without it there would be no Wilma in the Brief.
 
+You can also find Parent Recap on [ClaudeMarketplace](https://www.claudemarketplace.net/), a directory of skills, MCP servers and plugins for Claude Code.
+
 ## Disclaimer
 
 An open-source tool made by parents for their own use, not affiliated with or endorsed by Visma (Wilma), Eepos, myClub, Meta (WhatsApp) or Google. Wilma is read through the unofficial, community-maintained [wilma CLI](https://github.com/aikarjal/wilmai). If a Source stops working, contact the maintainers of Parent Recap or the wilma CLI, not these companies.
