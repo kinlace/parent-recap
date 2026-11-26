@@ -188,7 +188,7 @@ The nights and helpers more than one `test_nightly_*.py` uses are in `e2e/nights
 | `test_uninstall.py`                        | `uninstall` removes what setup made, and nothing else                  |
 | `test_new_source_doctor_uninstall.py`      | A Source added only to the registry in `doctor` and `uninstall`        |
 | `test_setup_page_browser.py`               | Main paths and each step's own, in a real browser (ADR 0024)           |
-| `test_signup.py`                           | Hosted sign-up: page, name, Wilma, MyClub, Brief, mail, 404s, removal  |
+| `test_signup.py`                           | Hosted sign-up: page, name, Wilma and a bare town's own one (#1064), MyClub, Brief, mail, 404s, removal |
 | `test_hosted_status.py`                    | `signup status`: each Household's last run and doctor, nothing private |
 | `test_hosted_household.py`                 | `signup show`, `recipients`, `myclub`: one Household seen and changed  |
 

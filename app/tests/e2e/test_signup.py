@@ -1234,7 +1234,7 @@ def tenants(names: list[str]) -> list[dict]:
 def test_a_towns_own_schools_wilma_is_the_one_named_after_it_and_its_schools(town):
     own, *others = TOWN_WILMAS[town]
     for names in ([own, *others], [*others, own]):  # wherever the list has it
-        found = setup_wilma.town_schools(town, tenants(names))
+        found = setup_wilma.own_schools_wilma(town, tenants(names))
 
         assert found is not None and found["name"] == own
 
@@ -1246,7 +1246,7 @@ def test_a_towns_own_schools_wilma_is_the_one_named_after_it_and_its_schools(tow
     ("Sastamala", ["Sastamalan kaupunki", "Sastamalan kunta"]),  # two would be a guess
 ])
 def test_no_wilma_is_the_towns_own_unless_exactly_one_is_named_so(town, names):
-    assert setup_wilma.town_schools(town, tenants(names)) is None
+    assert setup_wilma.own_schools_wilma(town, tenants(names)) is None
 
 
 @pytest.mark.parametrize("step, marked", [("create_user", "❌⬜⬜"), ("mint_key", "❌⬜⬜"),

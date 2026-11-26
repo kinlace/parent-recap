@@ -145,10 +145,10 @@ class Service:
             for t in listed:
                 for town in setup_wilma.towns_of(t):
                     by_town.setdefault(town, []).append(t)
-            schools = {town: setup_wilma.town_schools(town, ts) for town, ts in by_town.items()}
+            own = {town: setup_wilma.own_schools_wilma(town, ts) for town, ts in by_town.items()}
             self._towns = {f"{town} – {t['name']}": (t, town)
                            for town in sorted(by_town)
-                           for t in sorted(by_town[town], key=lambda t: t is not schools[town])}
+                           for t in sorted(by_town[town], key=lambda t: t is not own[town])}
         return self._towns
 
     def _picked(self, typed: str) -> tuple[dict[str, Any], str] | None:
@@ -161,8 +161,8 @@ class Service:
         if len(same) < 2:
             return same[0] if same else None
         town = same[0][1]
-        schools = setup_wilma.town_schools(town, [t for t, _ in same])
-        return None if schools is None else (schools, town)
+        own = setup_wilma.own_schools_wilma(town, [t for t, _ in same])
+        return None if own is None else (own, town)
 
     # ---------------------------------------------------------------- signing up
 
