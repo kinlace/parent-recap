@@ -1311,7 +1311,7 @@ function renderTowns() {
     // entries apart (#1072).
     const address = document.createElement("span");
     address.className = "address";
-    address.textContent = new URL(entry.url).host;
+    address.textContent = new URL(entry.url).hostname;
     name.append(address);
     if (entry.town) {
       const town = document.createElement("span");

@@ -133,9 +133,10 @@ class Service:
         return HTTPStatus.OK, self._form(language, page.Typed(recipients=invite.recipients))
 
     def _form(self, language: str, typed: page.Typed, error: str | None = None) -> str:
-        """The first step's form, offering each town once, with the Wilma sites of the town
-        typed listed to pick from (#1072)."""
-        towns = list(dict.fromkeys(town for _, town in self.towns().values()))
+        """The first step's form, offering each town once, then each of its entries, which a
+        Wilma's name typed finds, with the Wilma sites of the town typed listed to pick from
+        (#1072)."""
+        towns = [*dict.fromkeys(town for _, town in self.towns().values()), *self.towns()]
         picked = self._picked(typed.town, typed.wilma)
         return page.form(language, typed, towns, error, self._sites(typed.town),
                          picked[0]["url"] if picked else "")

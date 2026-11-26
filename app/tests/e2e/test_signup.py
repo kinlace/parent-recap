@@ -244,8 +244,10 @@ def test_the_page_is_a_phone_sized_form_with_the_invite_s_recipients_and_loads_n
     assert '<html lang="fi">' in html and said("fi", "title") in html
     assert 'value="parent@example.com"' in html and 'value="isa@example.com"' in html
     assert '<option value="zh" selected>' in html
-    # The towns of the CLI's own tenant list, each once (#1072).
-    assert html.count('<option value="Espoo">') == 1 and '<option value="Tampere">' in html
+    # The towns of the CLI's own tenant list, each once, then each town's entries, which a
+    # Wilma's name typed finds (#1072).
+    options = re.findall(r'<option value="([^"]*)">', html)
+    assert options.count("Espoo") == 1 and options.index("Tampere") < options.index(ESPOO_TOWN)
     # The password only in its own field, which never has a value.
     assert html.count('type="password"') == 1
     assert '<input id="password" name="password" type="password" ' \
