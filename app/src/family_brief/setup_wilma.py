@@ -94,6 +94,13 @@ MAX_TOWNS = 20
 # A town's own Wilma, which all its schools sign in through, is named after the town in its
 # list entry: "Espoon kaupunki", "Esbo stad", "Sipoon kunta". A school's own Wilma isn't (#688).
 TOWN_WILMA = re.compile(r"\b(kaupunki|kunta|stad|kommun)\b", re.IGNORECASE)
+# The words naming the Wilma of a town's own schools, after the town's name: "Tampereen kaupunki,
+# perusopetus", "Oulun sivistys- ja kulttuuripalvelut", "Kuusamon koulutoimisto", "Porin
+# kasvatus- ja opetusvirasto". A parent who types just the town means that one (#1064).
+TOWN_SCHOOLS = re.compile(
+    r"\b(?:kaupun|sivistys|koulutoimi|opetustoimi)\w*"
+    r"|\b(?:kunta|kunnan|perusopetus|opetusvirasto|kouluvirasto|koulutusvirasto|kouluosasto)\b"
+    r"|\bopetus-", re.IGNORECASE)
 # The Wilma address of each city in "City presets" in docs/config.md.
 WILMA_CITIES = {
     "espoo.inschool.fi": "Espoo",
@@ -299,6 +306,16 @@ def entry(listed: list[dict[str, Any]], url: str) -> dict[str, Any] | None:
 
 def towns_of(t: dict[str, Any]) -> list[str]:
     return [fi for fi, _ in t["towns"]]
+
+
+def town_schools(town: str, listed: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The Wilma of `town`'s own schools among the Wilmas `listed`, which `town` has: the one
+    named after the town and its city, its basic education or its education office, or named
+    just the town; None unless exactly one is."""
+    stem = town.casefold()[:max(3, len(town) - 3)]  # Turku: Turun, Helsinki: Helsingin
+    own = [t for t in listed if t["name"].casefold() == town.casefold()
+           or (t["name"].casefold().startswith(stem) and TOWN_SCHOOLS.search(t["name"]))]
+    return own[0] if len(own) == 1 else None
 
 
 def obfuscate(password: str) -> str:

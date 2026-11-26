@@ -135,22 +135,34 @@ class Service:
 
     def towns(self) -> dict[str, tuple[dict[str, Any], str]]:
         """What the town field offers, each with the Wilma and the town it stands for: the town
-        and its Wilma's name, since a town may have several."""
+        and its Wilma's name, since a town may have several. By town, each town's own schools'
+        Wilma first, among the few suggestions an iPhone shows (#1064)."""
         if self._towns is None:
             listed = setup_wilma.tenants()
             if listed is None:
                 return {}  # without the CLI's list, tried again on the next page
+            by_town: dict[str, list[dict[str, Any]]] = {}
+            for t in listed:
+                for town in setup_wilma.towns_of(t):
+                    by_town.setdefault(town, []).append(t)
+            schools = {town: setup_wilma.town_schools(town, ts) for town, ts in by_town.items()}
             self._towns = {f"{town} – {t['name']}": (t, town)
-                           for t in listed for town in setup_wilma.towns_of(t)}
+                           for town in sorted(by_town)
+                           for t in sorted(by_town[town], key=lambda t: t is not schools[town])}
         return self._towns
 
     def _picked(self, typed: str) -> tuple[dict[str, Any], str] | None:
-        """The Wilma and town `typed` picks: an entry of the list, or a town only one Wilma has."""
+        """The Wilma and town `typed` picks: an entry of the list, or a town, for the town's only
+        Wilma or else its own schools' one."""
         towns = self.towns()
         if typed in towns:
             return towns[typed]
         same = [v for v in towns.values() if v[1].casefold() == typed.strip().casefold()]
-        return same[0] if len(same) == 1 else None
+        if len(same) < 2:
+            return same[0] if same else None
+        town = same[0][1]
+        schools = setup_wilma.town_schools(town, [t for t, _ in same])
+        return None if schools is None else (schools, town)
 
     # ---------------------------------------------------------------- signing up
 

@@ -745,6 +745,7 @@ def test_a_wilma_cli_left_half_installed_is_installed_again_when_wilma_was_conne
 
 WILMA_PASSWORD = "Wilma-salasana-42"
 ESPOO = "https://espoo.inschool.fi"
+TAMPERE = "https://tampere.inschool.fi"
 TENANTS = {"wilmat": [  # as the Wilma CLI ships them: Wilma's public tenant list
     {"url": "https://aland.inschool.fi", "name": "Ålands skolor",
      "municipalities": [{"name_fi": "Maarianhamina", "name_sv": "Mariehamn"},
@@ -763,6 +764,15 @@ TENANTS = {"wilmat": [  # as the Wilma CLI ships them: Wilma's public tenant lis
     {"url": "https://omnia.inschool.fi", "name": "Omnia",
      "municipalities": [{"name_fi": "Kirkkonummi", "name_sv": "Kyrkslätt"},
                         {"name_fi": "Espoo", "name_sv": "Esbo"}]},
+    # Three of Tampere's sixteen, its own schools' last, after another named after the town
+    # (#1064).
+    {"url": "https://kalevanlukio.inschool.fi", "name": "Kalevan lukio, Tampere",
+     "municipalities": [{"name_fi": "Tampere", "name_sv": "Tammerfors"}]},
+    {"url": "https://typa.inschool.fi",
+     "name": "Tampereen kuntakokeilu Työllisyydenhoidon palveluyksikkö, TYPA, Tampere",
+     "municipalities": [{"name_fi": "Tampere", "name_sv": "Tammerfors"}]},
+    {"url": TAMPERE, "name": "Tampereen kaupunki, perusopetus",
+     "municipalities": [{"name_fi": "Tampere", "name_sv": "Tammerfors"}]},
 ]}
 WILMA_STUDENTS = [{"studentNumber": "1001", "name": "Mia Virtanen", "href": "/!1001/"},
                   {"studentNumber": "1002", "name": "Leo Virtanen", "href": "/!1002/"}]
@@ -770,7 +780,7 @@ WILMA_STUDENTS = [{"studentNumber": "1001", "name": "Mia Virtanen", "href": "/!1
 # The pinned wilma CLI (2.5) as setup uses it. It reads its saved profiles the way its
 # dist/config.js (getConfigPath, loadConfig, revealSecret) and dist/credentials.js (resolveAccounts:
 # every profile, the one signed in with last first, one per account; accountFor: a keychain
-# login's password from its entry) do, signs in to a fake Wilma that knows one account, and, as
+# login's password from its entry) do, signs in to a fake Wilma that knows its accounts, and, as
 # dist/access.js (onStudents) and dist/session-store.js do, saves each sign-in's Kids back into the
 # config and its session next to it. `config secrets` shows and moves where the passwords are, as
 # its dist/index.js (handleSecrets) and dist/secret-moves.js do, into a fake keychain, a file outside
@@ -908,7 +918,9 @@ class WilmaCLI:
         self.home = home
         self.prefix = fake_node.wilma_folder(home)
         self.node = fake_node.pinned_node(home)
-        self.accounts = {f"{ESPOO}|mia.parent": WILMA_PASSWORD}  # tenant|username → password
+        # tenant|username → password
+        self.accounts = {f"{ESPOO}|mia.parent": WILMA_PASSWORD,
+                         f"{TAMPERE}|mia.parent": WILMA_PASSWORD}
         self.students: list[dict[str, Any]] = WILMA_STUDENTS
         # An account's own Kids, by tenant|username, for one that doesn't list `students`.
         self.students_of: dict[str, list[dict[str, Any]]] = {}
