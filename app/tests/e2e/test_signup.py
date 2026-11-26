@@ -7,7 +7,7 @@ Household made under its own user with its first Brief sent and the maintainers 
 then the maintainers' command that removes a Household again.
 
 The outside edges are faked: the service's wilma CLI is `test_setup_wilma`'s fake, which knows one
-Wilma account; the household host is `fake_household_host`'s, whose users each have their own
+Wilma account in Espoo and one in Tampere; the household host is `fake_household_host`'s, whose users each have their own
 home, secrets and jobs and run the real `signup household` and `run` in-process; MyClub's server,
 Eepos's school portals, each city's eVaka, the model and the gateway's Email Delivery are the harness's; the system is the harness's, set to
 Linux. The service is the real one, on a free port or through socket pairs. Assertions are on the
@@ -49,7 +49,7 @@ from fake_sources import EEPOS_PASSWORD, EVAKA_PASSWORD
 from fake_household_host import FakeHouseholdHost
 from fake_system import LINUX
 from setup_page import CAN_LISTEN, Response, _Connection, _PairedServer, pause, wait_for
-from test_setup_wilma import ESPOO, WILMA_PASSWORD, WilmaCLI
+from test_setup_wilma import ESPOO, TAMPERE, WILMA_PASSWORD, WilmaCLI
 from test_setup_wilma import wilma_cli  # noqa: F401
 
 pytestmark = pytest.mark.posix  # the fake wilma CLI is a script on a shell-script Node
@@ -1156,6 +1156,97 @@ def test_a_town_only_one_wilma_has_is_taken_as_typed(signup):
     r = submit(signup, code, town="järvenpää")
 
     assert r.status == 200 and said("en", "wrong-password") in text(r)
+
+
+@pytest.mark.parametrize("typed", ["Tampere", " tampere "])
+def test_a_town_several_wilmas_have_is_taken_for_its_own_schools_one(signup, typed):
+    """A parent on a phone typed just Tampere, one of its sixteen Wilmas (#1064)."""
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = submit(signup, code, town=typed)
+
+    assert r.status == 200 and said("en", "sent", time="21:00") in text(r), text(r)
+    _, user = signup.user()
+    [profile] = json.loads((user.home / ".config" / "wilmai" / "config.json").read_text())[
+        "profiles"]
+    assert profile["tenantUrl"] == TAMPERE
+    assert Config.load(user.home / ".family" / "config.yaml").city == "Tampere"
+
+
+def test_a_picked_entry_of_a_town_wins_over_its_own_schools_wilma(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    # The fake CLI knows no mia.parent at Kalevan lukio, so its Wilma refuses the login.
+    r = submit(signup, code, town="Tampere – Kalevan lukio, Tampere")
+
+    assert r.status == 200 and said("en", "wrong-password") in text(r)
+
+
+def test_the_list_offers_each_towns_own_schools_wilma_first_among_its_entries(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    html = text(request(signup.url, f"/join/{code}"))
+
+    tampere = re.findall(r'<option value="(Tampere – [^"]*)">', html)
+    assert tampere == ["Tampere – Tampereen kaupunki, perusopetus",
+                       "Tampere – Kalevan lukio, Tampere",
+                       "Tampere – Tampereen kuntakokeilu Työllisyydenhoidon palveluyksikkö, "
+                       "TYPA, Tampere"]
+    espoo = re.findall(r'<option value="(Espoo – [^"]*)">', html)
+    assert espoo[0] == ESPOO_TOWN and len(espoo) == 4
+
+
+# Some of each town's Wilmas, as Wilma's own tenant list (wilma-client's tenant_list.json) names
+# them, with the one of its own schools first: the big towns and a few that name it otherwise.
+TOWN_WILMAS = {
+    "Tampere": ["Tampereen kaupunki, perusopetus", "Ahlmanin ammatti- ja aikuisopisto, Tampere",
+                "Kalevan lukio, Tampere", "Tampereen konservatorio",
+                "Tampereen kuntakokeilu Työllisyydenhoidon palveluyksikkö, TYPA, Tampere",
+                "Tampereen normaalikoulu", "Tampereen toisen asteen koulutus",
+                "Tampereen yhteiskoulun lukio"],
+    "Helsinki": ["Helsingin kaupunki", "Ammattiopisto Live", "Helsingin aikuisopisto",
+                 "Helsingin Konservatorio", "Helsingin yksityiset ja valtion koulut",
+                 "Stadin ammattiopisto"],
+    "Espoo": ["Espoon kaupunki / Suomenkielisen opetuksen tulosyksikkö", "Espoon Steinerkoulu",
+              "Kelloseppäkoulu, Espoo", "Omnia, Espoo"],
+    "Vantaa": ["Vantaan kaupunki", "Finavia Oyj, HR, Vantaa", "Vantaan seudun steinerkoulu"],
+    "Turku": ["Turun kaupunki", "TAO, Turun Ammattiopisto", "Turun konservatorio",
+              "Turun normaalikoulu", "Turun Steiner-koulu"],
+    "Oulu": ["Oulun sivistys- ja kulttuuripalvelut", "Oulun konservatorio",
+             "Oulun kristillinen koulu (0-9)", "Oulun normaalikoulu", "Oulun steinerkoulu"],
+    "Pori": ["Porin kasvatus- ja opetusvirasto", "Björneborgs svenska samskola",
+             "Porin Kristillinen Koulu"],
+    "Rovaniemi": ["Rovaniemi", "Lapin yliopiston harjoittelukoulu",
+                  "Rovaniemen Steinerkoulu, Rovaniemi"],
+    "Kuusamo": ["Kuusamon koulutoimisto", "Kajaanin perusopetus",
+                "KSAK Oy / Koillis-Suomen Aikuiskoulutus"],
+    "Riihimäki": ["Riihimäen kasvatus- ja opetuskeskus/perusopetus",
+                  "Riihimäen kasvatus- ja opetuskeskus/lukio-opetus"],
+}
+
+
+def tenants(names: list[str]) -> list[dict]:
+    return [{"url": f"https://{i}.inschool.fi", "name": n, "towns": []}
+            for i, n in enumerate(names)]
+
+
+@pytest.mark.parametrize("town", sorted(TOWN_WILMAS))
+def test_a_towns_own_schools_wilma_is_the_one_named_after_it_and_its_schools(town):
+    own, *others = TOWN_WILMAS[town]
+    for names in ([own, *others], [*others, own]):  # wherever the list has it
+        found = setup_wilma.town_schools(town, tenants(names))
+
+        assert found is not None and found["name"] == own
+
+
+@pytest.mark.parametrize("town, names", [
+    ("Hartola", ["Hartolan yhtenäiskoulu (0-10)", "Itä-Hämeen opisto, Hartola"]),  # neither
+    ("Uusikaupunki", ["Lounais-Suomen koulutuskuntayhtymä",
+                      "Uudenkaupungin sivistyspalvelukeskus"]),  # its genitive changes its stem
+    ("Sastamala", ["Sastamalan kaupunki", "Sastamalan kunta"]),  # two would be a guess
+])
+def test_no_wilma_is_the_towns_own_unless_exactly_one_is_named_so(town, names):
+    assert setup_wilma.town_schools(town, tenants(names)) is None
 
 
 @pytest.mark.parametrize("step, marked", [("create_user", "❌⬜⬜"), ("mint_key", "❌⬜⬜"),

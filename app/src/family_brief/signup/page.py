@@ -24,7 +24,9 @@ TEXT = {
                      "Recap see it, so they know who signed up.",
         "wilma": "Wilma",
         "town": "Town",
-        "town_hint": "Type your town in Finnish, such as Espoo, and pick it from the list.",
+        "town_hint": "Type your town in Finnish, such as Espoo. For primary and lower secondary "
+                     "school that is enough. If your child is at a lukio or another school, "
+                     "pick it from the list.",
         "username": "Wilma username",
         "password": "Wilma password",
         "password_hint": "The same as on the Wilma website or app. It is kept only on our "
@@ -162,7 +164,8 @@ TEXT = {
                      "ylläpitäjät, jotta he tietävät, kuka liittyi.",
         "wilma": "Wilma",
         "town": "Kunta",
-        "town_hint": "Kirjoita kuntasi nimi suomeksi, esimerkiksi Espoo, ja valitse se listasta.",
+        "town_hint": "Kirjoita kuntasi nimi suomeksi, esimerkiksi Espoo. Peruskoulua varten se "
+                     "riittää. Jos lapsesi on lukiossa tai muussa koulussa, valitse se listasta.",
         "username": "Wilman käyttäjätunnus",
         "password": "Wilman salasana",
         "password_hint": "Sama kuin Wilman verkkosivulla tai sovelluksessa. Se säilytetään vain "
@@ -305,7 +308,8 @@ TEXT = {
         "name_hint": "你家的称呼，例如「王家」或「小雨妈妈」。只有 Parent Recap 的维护者能看到，用来知道是谁开通的。",
         "wilma": "Wilma",
         "town": "城市",
-        "town_hint": "用芬兰语输入你所在的城市，例如 Espoo，然后在列表里选中它。",
+        "town_hint": "用芬兰语输入你所在的城市，例如 Espoo。孩子上小学或初中的话，输入城市名就够了；"
+                     "如果孩子上 lukio 或其他学校，请在列表里选中那所学校。",
         "username": "Wilma 用户名",
         "password": "Wilma 密码",
         "password_hint": "和 Wilma 网站或 App 上的相同。它只保存在我们的服务器上，用来替你读取 Wilma。",
