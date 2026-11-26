@@ -222,6 +222,11 @@ def without_wilma_in_espoo(tab) -> None:
     # The town's own Wilma says all its schools use it, so nobody looks for their school (#688).
     expect(tab.locator("#wilma-towns label").first).to_contain_text(text("wilma.town-wide"))
     expect(tab.locator("#wilma-towns .town-wide")).to_have_count(2)
+    # Each with its address, which tells the two apart, and how to match it to the parent's (#1072).
+    expect(tab.locator("#wilma-towns .address")).to_have_text([
+        "esbosv.inschool.fi", "espoo.inschool.fi", "espoonsteiner.inschool.fi",
+        "omnia.inschool.fi"])
+    expect(tab.locator("#wilma-address")).to_have_text(text("wilma.address"))
     tab.get_by_role("radio", name=re.compile("^Espoon kaupunki")).check()
     skip(tab, "wilma").click()
     expect(source_listed(tab, "wilma", "skipped")).to_be_visible()
