@@ -130,8 +130,32 @@ class Service:
         if invite is None:
             return HTTPStatus.NOT_FOUND, None
         language = language if language in LANGUAGES else invite.language
-        return HTTPStatus.OK, page.form(language, page.Typed(recipients=invite.recipients),
-                                        list(self.towns()))
+        return HTTPStatus.OK, self._form(language, page.Typed(recipients=invite.recipients))
+
+    def _form(self, language: str, typed: page.Typed, error: str | None = None) -> str:
+        """The first step's form, offering each town once, with the Wilma sites of the town
+        typed listed to pick from (#1072)."""
+        towns = list(dict.fromkeys(town for _, town in self.towns().values()))
+        picked = self._picked(typed.town, typed.wilma)
+        return page.form(language, typed, towns, error, self._sites(typed.town),
+                         picked[0]["url"] if picked else "")
+
+    def _sites(self, typed: str) -> list[page.Site]:
+        """The Wilma sites of the town `typed` (or of the town of the entry typed), in the town
+        field's order: its own schools' first, then the other town-wide ones (#1072)."""
+        towns = self.towns()
+        town = towns[typed][1] if typed in towns else typed.strip()
+        same = [(t, name) for t, name in towns.values() if name.casefold() == town.casefold()]
+        if not same:
+            return []
+        town = same[0][1]  # as the list writes it
+        listed = [t for t, _ in same]
+        own = setup_wilma.own_schools_wilma(town, listed)
+        sites = [page.Site(t["url"], t["name"], town,
+                           t is own or bool(setup_wilma.TOWN_WILMA.search(t["name"])))
+                 for t in listed]
+        # Stable: the town field's order, its own schools' Wilma first, otherwise.
+        return sorted(sites, key=lambda s: not s.town_wide)
 
     def towns(self) -> dict[str, tuple[dict[str, Any], str]]:
         """What the town field offers, each with the Wilma and the town it stands for: the town
@@ -151,10 +175,16 @@ class Service:
                            for t in sorted(by_town[town], key=lambda t: t is not own[town])}
         return self._towns
 
-    def _picked(self, typed: str) -> tuple[dict[str, Any], str] | None:
-        """The Wilma and town `typed` picks: an entry of the list, or a town, for the town's only
-        Wilma or else its own schools' one."""
+    def _picked(self, typed: str, wilma: str = "") -> tuple[dict[str, Any], str] | None:
+        """The Wilma and town `typed` picks: the Wilma site `wilma` picked in the town's list
+        (#1072), an entry of the list, or a town, for the town's only Wilma or else its own
+        schools' one."""
         towns = self.towns()
+        if wilma:
+            site = next((s for s in self._sites(typed) if s.url == wilma), None)
+            if site is not None:
+                return next(v for v in towns.values()
+                            if v[0]["url"] == site.url and v[1] == site.town)
         if typed in towns:
             return towns[typed]
         same = [v for v in towns.values() if v[1].casefold() == typed.strip().casefold()]
@@ -196,20 +226,26 @@ class Service:
             if fields.get("step") == "myclub":
                 if code in self._pending:
                     return self._make(code, fields)
-                return HTTPStatus.OK, page.form(language, page.Typed(recipients=invite.recipients),
-                                                list(self.towns()), "expired")
+                return HTTPStatus.OK, self._form(language, page.Typed(
+                    recipients=invite.recipients), "expired")
             self._pending.pop(code, None)  # signing in again starts over
             typed = page.Typed(fields.get("town", "").strip(), fields.get("username", "").strip(),
-                               _recipients(fields, language), _kids(fields), _name(fields))
+                               _recipients(fields, language), _kids(fields), _name(fields),
+                               fields.get("wilma", ""))
             password = fields.get("password", "")
+            # "Show the Wilma sites": the form again, with the town's list or why there's none,
+            # with no script on the page (#1072).
+            if fields.get("find"):
+                error = None if self._sites(typed.town) else "invalid-town"
+                return HTTPStatus.OK, self._form(language, typed, error)
 
             def again(error: str, status: HTTPStatus = HTTPStatus.OK) -> tuple[HTTPStatus, str]:
                 log.info("A sign-up wasn't taken: %s", error)
-                return status, page.form(language, typed, list(self.towns()), error)
+                return status, self._form(language, typed, error)
             without_wilma = not (typed.town or typed.username or password)
             if without_wilma and not typed.kids:
                 return again("invalid-sign-in", HTTPStatus.BAD_REQUEST)
-            picked = None if without_wilma else self._picked(typed.town)
+            picked = None if without_wilma else self._picked(typed.town, typed.wilma)
             if not without_wilma and picked is None:
                 return again("invalid-town", HTTPStatus.BAD_REQUEST)
             if not without_wilma and (not typed.username or not password):

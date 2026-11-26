@@ -1307,6 +1307,12 @@ function renderTowns() {
       wide.textContent = t("wilma.town-wide");
       name.append(wide);
     }
+    // The address the parent sees in the browser on that Wilma, the one sure way to tell two
+    // entries apart (#1072).
+    const address = document.createElement("span");
+    address.className = "address";
+    address.textContent = new URL(entry.url).host;
+    name.append(address);
     if (entry.town) {
       const town = document.createElement("span");
       town.className = "town";
@@ -1316,6 +1322,7 @@ function renderTowns() {
     return label;
   }));
   document.getElementById("wilma-none").hidden = !wilmaStep.searched || shown.length > 0;
+  document.getElementById("wilma-address").hidden = shown.length === 0;
 }
 
 function chosenTown() {

@@ -244,7 +244,8 @@ def test_the_page_is_a_phone_sized_form_with_the_invite_s_recipients_and_loads_n
     assert '<html lang="fi">' in html and said("fi", "title") in html
     assert 'value="parent@example.com"' in html and 'value="isa@example.com"' in html
     assert '<option value="zh" selected>' in html
-    assert f'<option value="{ESPOO_TOWN}">' in html  # the towns of the CLI's own tenant list
+    # The towns of the CLI's own tenant list, each once (#1072).
+    assert html.count('<option value="Espoo">') == 1 and '<option value="Tampere">' in html
     # The password only in its own field, which never has a value.
     assert html.count('type="password"') == 1
     assert '<input id="password" name="password" type="password" ' \
@@ -1182,18 +1183,117 @@ def test_a_picked_entry_of_a_town_wins_over_its_own_schools_wilma(signup):
     assert r.status == 200 and said("en", "wrong-password") in text(r)
 
 
-def test_the_list_offers_each_towns_own_schools_wilma_first_among_its_entries(signup):
+def find(s: SignUp, code: str, town: str, lang: str = "en", **fields: str) -> str:
+    """"Show the Wilma sites" pressed with `town` typed: the form again, with the town's list."""
+    return text(request(s.url, f"/join/{code}", "POST", {
+        "lang": lang, "name": "", "town": town, "username": "", "password": "", "r0": "",
+        "r0_language": lang, "find": "1"} | fields))
+
+
+def sites(html: str) -> list[tuple[str, str, bool]]:
+    """The Wilma sites the form lists: each one's address, what it says and whether it's picked."""
+    return [(address, " ".join(said.split()), bool(checked)) for _, checked, said, address in
+            re.findall(r'<label><input type="radio" name="wilma" value="([^"]*)"( checked)?>\s*'
+                       r'<span>([^<]*)<span class="address">([^<]*)</span>', html)]
+
+
+def test_a_town_s_wilma_sites_are_all_listed_its_own_schools_first_with_each_address(signup):
+    """A parent typed Tampere and looked for their child's school in the list (#1072)."""
     code = signup.invite(Recipient("parent@example.com", "fi"))
 
-    html = text(request(signup.url, f"/join/{code}"))
+    html = find(signup, code, "tampere")
 
-    tampere = re.findall(r'<option value="(Tampere – [^"]*)">', html)
-    assert tampere == ["Tampere – Tampereen kaupunki, perusopetus",
-                       "Tampere – Kalevan lukio, Tampere",
-                       "Tampere – Tampereen kuntakokeilu Työllisyydenhoidon palveluyksikkö, "
-                       "TYPA, Tampere"]
-    espoo = re.findall(r'<option value="(Espoo – [^"]*)">', html)
-    assert espoo[0] == ESPOO_TOWN and len(espoo) == 4
+    assert sites(html) == [
+        ("tampere.inschool.fi", "Tampere – all city schools (Tampereen kaupunki, perusopetus)",
+         True),
+        ("kalevanlukio.inschool.fi", "Tampere – Kalevan lukio, Tampere", False),
+        ("typa.inschool.fi", "Tampere – Tampereen kuntakokeilu Työllisyydenhoidon "
+         "palveluyksikkö, TYPA, Tampere", False)]
+    assert said("en", "sites_hint") in html
+    assert html.index('name="town"') < html.index('name="wilma"') < html.index('name="username"')
+    assert said("en", "invalid-town") not in html
+
+
+def test_a_town_with_two_town_wide_wilmas_lists_both_first_told_apart_by_address(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    listed = sites(find(signup, code, "Espoo"))
+
+    assert listed[:2] == [
+        ("espoo.inschool.fi", "Espoo – all city schools (Espoon kaupunki / Suomenkielisen "
+         "opetuksen tulosyksikkö)", True),
+        ("esbosv.inschool.fi", "Espoo – all city schools (Esbo stad / Svenska "
+         "bildningstjänster)", False)]
+    assert sorted(address for address, _, _ in listed[2:]) == [
+        "espoonsteiner.inschool.fi", "omnia.inschool.fi"]
+
+
+@pytest.mark.parametrize("language", ["fi", "en", "zh"])
+def test_the_hint_and_the_town_wide_marking_are_in_the_family_s_language(signup, language):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    html = find(signup, code, "Tampere", lang=language)
+
+    assert said(language, "town_hint") in html and said(language, "find") in html
+    assert said(language, "sites_hint") in html
+    assert sites(html)[0][1] == " ".join(said(
+        language, "town_wide_site", town="Tampere", name="Tampereen kaupunki, perusopetus").split())
+
+
+def test_the_page_s_go_key_continues_and_the_town_s_list_needs_its_own_button(signup):
+    """With no script on the page, the town's list comes with a press of its own button, and a
+    phone's Go key, which presses the form's first button, still continues (#1072)."""
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    html = text(request(signup.url, f"/join/{code}?lang=en"))
+
+    buttons = re.findall(r"<button [^>]*>", html)
+    assert buttons[0] == '<button type="submit" class="default" tabindex="-1" aria-hidden="true">'
+    assert '<button type="submit" name="find" value="1" class="find" formnovalidate>' in buttons
+    assert 'name="wilma"' not in html  # no town typed yet, so no list
+
+
+def test_showing_an_unknown_town_s_sites_says_to_pick_it_from_the_list(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = request(signup.url, f"/join/{code}", "POST", {
+        "lang": "en", "town": "Atlantis", "find": "1", "username": "mia.parent"})
+
+    assert r.status == 200 and said("en", "invalid-town") in text(r)
+    assert 'value="mia.parent"' in text(r) and (signup.host.users, signup.host.keys) == ({}, {})
+
+
+def test_a_wilma_site_picked_in_the_town_s_list_is_the_one_signed_in_to(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    # The fake CLI knows no mia.parent at Kalevan lukio, so its Wilma refuses the login, and the
+    # form comes back with the town's list, the site picked still picked.
+    r = submit(signup, code, town="Tampere", wilma="https://kalevanlukio.inschool.fi")
+
+    assert r.status == 200 and said("en", "wrong-password") in text(r)
+    assert [address for address, _, checked in sites(text(r)) if checked] == [
+        "kalevanlukio.inschool.fi"]
+
+
+def test_signing_up_with_a_wilma_site_picked_from_the_list_works(signup):
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = submit(signup, code, town="Tampere", wilma=TAMPERE)
+
+    assert r.status == 200 and said("en", "sent", time="21:00") in text(r), text(r)
+    _, user = signup.user()
+    [profile] = json.loads((user.home / ".config" / "wilmai" / "config.json").read_text())[
+        "profiles"]
+    assert profile["tenantUrl"] == TAMPERE
+
+
+def test_a_site_picked_for_another_town_than_the_one_typed_is_left_for_the_town(signup):
+    """The town was changed after its list was shown: the town typed wins."""
+    code = signup.invite(Recipient("parent@example.com", "fi"))
+
+    r = submit(signup, code, town="Espoo", wilma="https://kalevanlukio.inschool.fi")
+
+    assert r.status == 200 and said("en", "sent", time="21:00") in text(r), text(r)
 
 
 # Some of each town's Wilmas, as Wilma's own tenant list (wilma-client's tenant_list.json) names

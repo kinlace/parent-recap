@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from html import escape
+from urllib.parse import urlsplit
 
 from .invites import LANGUAGES, Recipient
 
@@ -24,9 +25,15 @@ TEXT = {
                      "Recap see it, so they know who signed up.",
         "wilma": "Wilma",
         "town": "Town",
-        "town_hint": "Type your town in Finnish, such as Espoo. For primary and lower secondary "
-                     "school that is enough. If your child is at a lukio or another school, "
-                     "pick it from the list.",
+        "town_hint": "Type your town in Finnish, such as Tampere, and press Show the Wilma "
+                     "sites. The list shows Wilma sites, not single schools: a city's own "
+                     "schools share one, marked \"all city schools\".",
+        "find": "Show the Wilma sites",
+        "sites": "Wilma sites in {town}",
+        "town_wide_site": "{town} – all city schools ({name})",
+        "sites_hint": "Under each is its address, which your browser shows when you sign in to "
+                      "that Wilma. Not sure? Pick the one whose address matches the one you use "
+                      "for Wilma.",
         "username": "Wilma username",
         "password": "Wilma password",
         "password_hint": "The same as on the Wilma website or app. It is kept only on our "
@@ -164,8 +171,16 @@ TEXT = {
                      "ylläpitäjät, jotta he tietävät, kuka liittyi.",
         "wilma": "Wilma",
         "town": "Kunta",
-        "town_hint": "Kirjoita kuntasi nimi suomeksi, esimerkiksi Espoo. Peruskoulua varten se "
-                     "riittää. Jos lapsesi on lukiossa tai muussa koulussa, valitse se listasta.",
+        "town_hint": "Kirjoita kuntasi nimi suomeksi, esimerkiksi Tampere, ja paina Näytä "
+                     "Wilmat. Listassa on Wilmoja, ei yksittäisiä kouluja: kunnan omilla "
+                     "kouluilla on yhteinen Wilma, jonka kohdalla lukee \"kaikki kunnan "
+                     "koulut\".",
+        "find": "Näytä Wilmat",
+        "sites": "Wilmat – {town}",
+        "town_wide_site": "{town} – kaikki kunnan koulut ({name})",
+        "sites_hint": "Kunkin alla on sen osoite, jonka selain näyttää, kun kirjaudut siihen "
+                      "Wilmaan. Etkö ole varma? Valitse se, jonka osoite on sama kuin sen "
+                      "Wilman, jota käytät.",
         "username": "Wilman käyttäjätunnus",
         "password": "Wilman salasana",
         "password_hint": "Sama kuin Wilman verkkosivulla tai sovelluksessa. Se säilytetään vain "
@@ -308,8 +323,13 @@ TEXT = {
         "name_hint": "你家的称呼，例如「王家」或「小雨妈妈」。只有 Parent Recap 的维护者能看到，用来知道是谁开通的。",
         "wilma": "Wilma",
         "town": "城市",
-        "town_hint": "用芬兰语输入你所在的城市，例如 Espoo。孩子上小学或初中的话，输入城市名就够了；"
-                     "如果孩子上 lukio 或其他学校，请在列表里选中那所学校。",
+        "town_hint": "用芬兰语输入你所在的城市，例如 Tampere，然后点“显示 Wilma 网站”。列表里是 Wilma "
+                     "网站，不是单个学校：本市的公立学校共用一个，标着“全市公立学校”。",
+        "find": "显示 Wilma 网站",
+        "sites": "{town} 的 Wilma 网站",
+        "town_wide_site": "{town} – 全市公立学校（{name}）",
+        "sites_hint": "每一项下面是它的网址，也就是你登录这个 Wilma 时浏览器地址栏里显示的网址。"
+                      "不确定选哪个？选网址和你平时用的 Wilma 一样的那个。",
         "username": "Wilma 用户名",
         "password": "Wilma 密码",
         "password_hint": "和 Wilma 网站或 App 上的相同。它只保存在我们的服务器上，用来替你读取 Wilma。",
@@ -412,6 +432,12 @@ border-radius:.4rem;background:#fff}
 ol{list-style:none;padding:0}li{margin:.5rem 0}
 button{margin-top:1.5rem;width:100%;font:inherit;font-weight:600;padding:.8rem;border:0;
 border-radius:.4rem;background:#2d5c4f;color:#fff}
+button.find{margin-top:.5rem;background:#fff;color:#2d5c4f;border:1px solid #2d5c4f}
+button.default{position:absolute;left:-100vw;width:1px}
+fieldset.sites{border:0;padding:0;margin:.75rem 0 0}legend{font-weight:600;padding:0}
+.sites label{display:flex;gap:.5rem;align-items:flex-start;font-weight:400;margin:.5rem 0}
+.sites input{width:auto;margin:.2rem 0 0;flex:none}.sites span{overflow-wrap:anywhere}
+.address{display:block;color:#5b5a55;font-size:.9rem}
 """
 # The Sources the second step of making a Household connects, in the order it names them, and how
 # each language says it connects them: "Connecting Wilma, Eepos and eVaka" (#790).
@@ -462,9 +488,29 @@ class Typed:
     recipients: list[Recipient] = field(default_factory=list)
     kids: list[str] = field(default_factory=list)  # the names given in place of Wilma
     name: str = ""  # what the family asks to be called (#814)
+    wilma: str = ""  # the URL of the Wilma site picked in the town's list (#1072)
 
 
-def form(language: str, typed: Typed, towns: list[str], error: str | None = None) -> str:
+@dataclass
+class Site:
+    """One of a town's Wilma sites, as the form lists it to pick from (#1072): `town_wide` when
+    the town's own schools sign in through it."""
+    url: str
+    name: str
+    town: str
+    town_wide: bool = False
+
+    @property
+    def address(self) -> str:
+        """What the parent sees in the browser's address bar on it: opetustampere.inschool.fi."""
+        return urlsplit(self.url).hostname or self.url
+
+
+def form(language: str, typed: Typed, towns: list[str], error: str | None = None,
+         sites: list[Site] | None = None, picked: str = "") -> str:
+    """The first step: what to call the family, the Wilma sign-in and the Recipients. The town
+    field offers each of `towns`, and under it the town's Wilma `sites` are listed to pick from,
+    `picked` the one checked, since a town may have several (#1072)."""
     t = TEXT[language]
     rows = [*typed.recipients[:MAX_RECIPIENTS - 1], Recipient("", language)]
     recipients = "".join(_recipient(i, r, t, last=i == len(rows) - 1) for i, r in enumerate(rows))
@@ -477,6 +523,7 @@ def form(language: str, typed: Typed, towns: list[str], error: str | None = None
 <p>{escape(t['intro'])}</p>
 {f'<p class="error" role="alert">{escape(t[error])}</p>' if error else ''}
 <form method="post" autocomplete="on">
+<button type="submit" class="default" tabindex="-1" aria-hidden="true">{escape(t['submit'])}</button>
 <input type="hidden" name="lang" value="{language}">
 <label for="name">{escape(t['name'])}</label>
 <input id="name" name="name" autocomplete="off" maxlength="{MAX_NAME}" required
@@ -487,6 +534,8 @@ def form(language: str, typed: Typed, towns: list[str], error: str | None = None
 <input id="town" name="town" list="towns" autocomplete="off" value="{escape(typed.town)}">
 <datalist id="towns">{options}</datalist>
 <p class="hint">{escape(t['town_hint'])}</p>
+<button type="submit" name="find" value="1" class="find" formnovalidate>{escape(t['find'])}</button>
+{_sites(sites or [], picked, t)}
 <label for="username">{escape(t['username'])}</label>
 <input id="username" name="username" autocomplete="username" autocapitalize="none"
  spellcheck="false" value="{escape(typed.username)}">
@@ -554,6 +603,21 @@ def myclub(language: str, kids: list[str], error: str | None = None,
 <button type="submit">{escape(t['myclub_done'])}</button>
 <p class="hint">{escape(t['wait'])}</p>
 </form>""", languages=False)
+
+
+def _sites(sites: list[Site], picked: str, t: dict[str, str]) -> str:
+    """The town's Wilma sites as a list of radio buttons, all shown on a phone, as a datalist's
+    few suggestions aren't: each says what it covers and its address (#1072)."""
+    if not sites:
+        return ""
+    rows = "".join(f"""<label><input type="radio" name="wilma" value="{escape(s.url)}"\
+{' checked' if s.url == picked else ''}>
+<span>{escape(t['town_wide_site'].format(town=s.town, name=s.name) if s.town_wide
+              else f"{s.town} – {s.name}")}
+<span class="address">{escape(s.address)}</span></span></label>
+""" for s in sites)
+    return f"""<fieldset class="sites"><legend>{escape(t['sites'].format(town=sites[0].town))}</legend>
+{rows}<p class="hint">{escape(t['sites_hint'])}</p></fieldset>"""
 
 
 def _links(i: int, kid: str, t: dict[str, str]) -> str:
