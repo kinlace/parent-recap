@@ -308,11 +308,13 @@ def towns_of(t: dict[str, Any]) -> list[str]:
     return [fi for fi, _ in t["towns"]]
 
 
-def town_schools(town: str, listed: list[dict[str, Any]]) -> dict[str, Any] | None:
+def own_schools_wilma(town: str, listed: list[dict[str, Any]]) -> dict[str, Any] | None:
     """The Wilma of `town`'s own schools among the Wilmas `listed`, which `town` has: the one
     named after the town and its city, its basic education or its education office, or named
     just the town; None unless exactly one is."""
-    stem = town.casefold()[:max(3, len(town) - 3)]  # Turku: Turun, Helsinki: Helsingin
+    # The genitive changes up to the town's last three letters: Turku, Turun; Helsinki,
+    # Helsingin; Kauniainen, Kauniaisten.
+    stem = town.casefold()[:max(3, len(town) - 3)]
     own = [t for t in listed if t["name"].casefold() == town.casefold()
            or (t["name"].casefold().startswith(stem) and TOWN_SCHOOLS.search(t["name"]))]
     return own[0] if len(own) == 1 else None
