@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -53,6 +54,17 @@ def desktop_app() -> bool:
 def native_dir() -> Path:
     """Where Claude Code's native installer (https://claude.ai/install.sh) puts `claude`."""
     return Path.home() / ".local" / "bin"
+
+
+def sign_in_command(program: str | None = None) -> str:
+    """What the family types in Terminal to sign Claude Code in: the full path of `program`, or of
+    the native installer's `claude` before there is one, with the home folder as `~`. A bare
+    `claude` isn't found in the window the installer ran in, nor by bash in a new one (#1076)."""
+    path = Path(program) if program else native_dir() / "claude"
+    try:
+        return "~/" + shlex.quote(path.relative_to(Path.home()).as_posix())
+    except ValueError:
+        return shlex.quote(str(path))
 
 
 def find() -> str | None:

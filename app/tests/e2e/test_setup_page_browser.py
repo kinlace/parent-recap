@@ -1465,9 +1465,10 @@ def test_welcome_offers_to_check_again_only_while_it_can_t_go_on(tab, ai, on, na
     again = button(tab, "welcome.ai.again", system=on)
     go_on = button(tab, "continue", system=on)
 
-    def picked_shows(result: str) -> None:
+    def picked_shows(result: str, command: str) -> None:
         tab.get_by_role("radio", name=text(f"welcome.ai.{name}", system=on)).check()
-        expect(tab.locator("#ai-message")).to_have_text(text(f"ai.{name}.{result}", system=on))
+        expect(tab.locator("#ai-message")).to_have_text(
+            text(f"ai.{name}.{result}", system=on, command=command))
         if on == "windows" or name == "codex":
             expect(again).to_be_hidden()
             expect(go_on).to_be_enabled()
@@ -1477,15 +1478,17 @@ def test_welcome_offers_to_check_again_only_while_it_can_t_go_on(tab, ai, on, na
 
     # Not installed: where the AI's own step installs it (Codex on both systems, Claude Code on
     # Windows), Welcome goes on; on a Mac the family installs Claude Code first.
-    picked_shows("not-installed")
+    # A Mac's server names the native installer's `claude` in full (#1076); Windows installs it.
+    picked_shows("not-installed", "claude" if SYSTEM == "windows" else "~/.local/bin/claude")
     tab.get_by_role("radio", name=text("welcome.ai.gateway", system=on)).check()
     expect(tab.get_by_text(text("ai.gateway.ready", system=on))).to_be_visible()
     expect(again).to_be_hidden()
     expect(go_on).to_be_enabled()
     # Signed out: the same AIs' own steps sign in, Codex's with `codex login` on a Mac as on
     # Windows (#707); on a Mac Claude Code's sign-in needs it installed from Terminal (#475).
-    tab.route(re.compile(r"/api/ai$"), lambda route: route.fulfill(json={"result": "signed-out"}))
-    picked_shows("signed-out")
+    tab.route(re.compile(r"/api/ai$"), lambda route: route.fulfill(
+        json={"result": "signed-out", "sign_in": "~/'My Tools/claude'"}))
+    picked_shows("signed-out", "~/'My Tools/claude'")
 
 
 @pytest.mark.macos
@@ -1495,14 +1498,16 @@ def test_with_the_claude_app_welcome_says_claude_code_is_another_program_and_kee
     in_english(tab)
     claude = tab.get_by_role("radio", name=text("welcome.ai.claude"))
     claude.check()
-    expect(tab.locator("#ai-message")).to_have_text(text("ai.claude.not-installed"))
+    expect(tab.locator("#ai-message")).to_have_text(
+        text("ai.claude.not-installed", command="~/.local/bin/claude"))
     tab.get_by_role("radio", name=text("welcome.ai.gateway")).check()
 
     monkeypatch.setattr(claude_backend, "DESKTOP_APPS", ("~/Applications/Claude.app",))
     (harness.home / "Applications" / "Claude.app").mkdir(parents=True)
     claude.check()
 
-    expect(tab.locator("#ai-message")).to_have_text(text("ai.claude.not-installed.app"))
+    expect(tab.locator("#ai-message")).to_have_text(
+        text("ai.claude.not-installed.app", command="~/.local/bin/claude"))
     expect(tab.locator("#ai-install-line")).to_have_text(
         "curl -fsSL https://claude.ai/install.sh | bash")
     expect(button(tab, "continue")).to_be_disabled()
