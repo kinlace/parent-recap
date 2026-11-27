@@ -2,6 +2,25 @@
 
 What changes for families in each release, collected from the `What changes for families:` line of every PR merged since the previous release (see [Reviews](CONTRIBUTING.md#reviews)).
 
+## 0.23.0 · 2026-11-27
+
+### Added
+
+- You can ask your Claude or Codex to repeat an open to-do in the Brief every evening until it is due, instead of only on the evening before.
+- On the sign-up page, "Show the Wilma sites" lists every Wilma of your town, the one all city schools use first and marked so, each with its web address. Typing just your town, such as Tampere, picks your town's own school Wilma. The setup page shows each Wilma's address too.
+- A Chinese Brief from the family's own computer now ends with a link, after "Change settings", to a short video showing how to change Parent Recap just by asking your own AI.
+
+### Changed
+
+- An earlier to-do that the Brief reminds you of again on the evening before it is due no longer looks like tonight's new to-dos: it comes as one short line in a "Don't forget" (还记得, Muista) block at the end of the Brief.
+- On the setup page's last step, the Run Report switch now reads "Tell the Parent Recap team each day whether the Brief went out" (每天告诉 Parent Recap 团队日报发出去没有), and the line above it starts with what is never in it: nothing from your messages, and no names, addresses or file paths. The Finnish sentence reads naturally.
+- The setup page's last step now says that Claude or Codex can also change what the Brief says, for example by adding a few lines on what a WhatsApp group talks about.
+- On a Mac with the Claude app but without Claude Code, the setup page's first step now says the app isn't Claude Code, a separate program that runs in Terminal with the same Claude account, and still shows the line that installs it.
+
+### Fixed
+
+- The weekend Briefs no longer repeat Monday's school hours and the same to-do every night; each comes once more, on the evening before it.
+
 ## 0.22.0 · 2026-11-23
 
 ### Added
