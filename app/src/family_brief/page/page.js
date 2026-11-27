@@ -590,6 +590,8 @@ function renderRecipients() {
   for (const id of ["connect-intro", "sources", "source-handoff", "connect-done"]) {
     document.getElementById(id).hidden = asking;
   }
+  // Neither Dutch Source is on the hosted version (#1078).
+  document.getElementById("connect-nl").hidden = asking || page.system === "linux";
   if (asking) {
     for (const name of Object.keys(STEPS)) document.getElementById("source-" + name).hidden = true;
     if (!recipientsStep.shown) prepareRecipients();
@@ -613,7 +615,7 @@ const gmailStep = { connecting: false };
 
 function setUpGmail() {
   document.getElementById("gmail-open").addEventListener("click", openAppPasswords);
-  for (const id of ["gmail-two-step", "gmail-two-step-more"]) {
+  for (const id of ["gmail-two-step", "gmail-two-step-before", "gmail-two-step-more"]) {
     document.getElementById(id).addEventListener("click", () => openSite("two-step"));
   }
   document.getElementById("gmail-form").addEventListener("submit", connectGmail);

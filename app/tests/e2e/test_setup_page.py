@@ -449,6 +449,24 @@ def test_the_source_list_shows_each_entry_with_its_status(harness, page):
         assert call(page.url, path, method="POST", body={}).status == 404, path
 
 
+def test_under_the_source_list_a_family_in_the_netherlands_reads_how_to_add_its_sources():
+    # #1078: Social Schools and Konnect aren't on the page; one line under the Source list, not
+    # in a fold, says they're added afterwards and what to tell the AI, in the manage skill's own
+    # words for them.
+    html = (PAGE_DIR / "index.html").read_text()
+    connect = html[html.index('id="connect"'):html.index('id="source-wilma"')]
+    line = re.search(r'<p id="connect-nl"[^>]*data-text="connect.nl"[^>]*></p>', connect)
+    assert line and connect.index('id="sources"') < line.start()
+    assert "<details" not in connect[:line.start()].rsplit("</details>", 1)[-1]
+    manage = (ROOT / "skills" / "manage" / "SKILL.md").read_text()
+    for phrase in ('"add Social Schools"', '"add Konnect"'):
+        assert f"({phrase}" in manage, phrase
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        said = table["connect.nl"]
+        assert "add Social Schools" in said and "add Konnect" in said, language
+        assert "\n" not in said, language
+
+
 def test_on_the_hosted_version_s_server_the_page_offers_only_what_hosting_can_do(harness, page):
     harness.system = LINUX
 

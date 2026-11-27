@@ -510,7 +510,10 @@ def test_the_gmail_step_warns_before_google_and_its_fold_names_the_likely_causes
     before = step[step.index('<summary data-text="gmail.before"'):step.index("</details>")]
     assert (before.index('data-text="gmail.before.age"')
             < before.index('data-text="gmail.before.reset"')
-            < before.index('data-text="gmail.before.two-step"'))
+            < before.index('data-text="gmail.before.two-step"')
+            < before.index('id="gmail-two-step-before"'))
+    # #1078: open at first, so the 2-Step Verification button beside its line shows unasked.
+    assert re.search(r'<details id="gmail-before"[^>]*\bopen\b', step)
     fold = step[step.index('data-text="gmail.unavailable"'):]
     assert (fold.index('data-text="gmail.unavailable.account"')
             < fold.index('data-text="gmail.unavailable.two-step"')

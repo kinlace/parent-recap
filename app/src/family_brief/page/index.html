@@ -132,6 +132,9 @@
     </div>
     <p id="connect-intro" class="note" data-text="connect.intro"></p>
     <ol id="sources" class="sources"></ol>
+    <!-- Social Schools and Konnect aren't steps here: the family adds them afterwards by telling
+         the AI, in the manage skill's words (#1078). Not on the hosted version, which has neither. -->
+    <p id="connect-nl" class="hint" data-text="connect.nl" hidden></p>
     <p id="source-handoff" class="handoff" role="status" hidden></p>
     <div id="connect-slot" class="slot"></div>
     <div id="source-wilma" class="source" hidden>
@@ -190,12 +193,14 @@
         <button type="button" class="secondary" data-skip hidden></button>
       </div>
       <div id="gmail-own" hidden>
-        <details class="more">
+        <!-- Open at first, so a parent without 2-Step Verification can turn it on before Google's
+             App Passwords page turns them away (#1078). -->
+        <details id="gmail-before" class="more" open>
           <summary data-text="gmail.before"></summary>
           <ul>
             <li data-text="gmail.before.age"></li>
             <li data-text="gmail.before.reset"></li>
-            <li data-text="gmail.before.two-step"></li>
+            <li><span data-text="gmail.before.two-step"></span> <button type="button" id="gmail-two-step-before" class="link" data-text="gmail.two-step"></button></li>
           </ul>
         </details>
         <form id="gmail-form" class="details">

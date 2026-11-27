@@ -447,6 +447,7 @@ def test_a_family_that_reads_no_mail_skips_gmail_and_setup_finishes_without_it(t
     expect(tab.get_by_label(text("gmail.password"))).to_be_hidden()
     expect(tab.get_by_role("button", name=re.compile(r"^Skip "))).to_have_count(0)
     expect(tab.get_by_text(text("recipients.junk"))).to_be_hidden()
+    expect(tab.get_by_text(text("connect.nl"))).to_be_hidden()
     # A page loaded again before they're saved comes back to this step.
     tab.reload()
     expect(heading(tab, "recipients.title")).to_be_visible()
@@ -459,6 +460,8 @@ def test_a_family_that_reads_no_mail_skips_gmail_and_setup_finishes_without_it(t
     expect(tab.get_by_text(text("recipients.to", addresses=hotmail))).to_be_visible()
     expect(heading(tab, "recipients.title")).to_be_hidden()
     expect(source_listed(tab, "wilma", "to-do")).to_be_visible()
+    # #1078: under the Source list, how a family in the Netherlands adds its two Sources.
+    expect(tab.get_by_text(text("connect.nl"))).to_be_visible()
     without_wilma_in_espoo(tab)
     tab.get_by_label(text("gateway.key"), exact=True).fill(GATEWAY_KEY)
     button(tab, "gateway.save").click()
@@ -1229,11 +1232,11 @@ def test_the_app_passwords_button_asks_for_the_gmail_address_first(tab, family):
     address = tab.get_by_label(text("gmail.address"))
     expect(tab.get_by_text(text("gmail.account"))).to_be_visible()
     # #528: where the first outside tester got stuck, said before the parent goes to Google, in
-    # one line with the rest folded under it (#708).
+    # a fold that is open at first (#1078), so the 2-Step Verification button shows.
     expect(tab.get_by_text(text("gmail.before"))).to_be_visible()
-    expect(tab.get_by_text(text("gmail.before.reset"))).to_be_hidden()
-    tab.get_by_text(text("gmail.before")).click()
     expect(tab.get_by_text(text("gmail.before.reset"))).to_be_visible()
+    tab.get_by_text(text("gmail.before")).click()
+    expect(tab.get_by_text(text("gmail.before.reset"))).to_be_hidden()
     address.fill("")
 
     button(tab, "gmail.open").click()
@@ -1266,7 +1269,8 @@ def test_an_app_password_gmail_rejects_shows_why_and_the_way_to_fix_it(tab):
     expect(status).to_have_class(re.compile(r"\bfail\b"))
     expect(status).to_have_attribute("role", "alert")
     expect(tab.get_by_label(text("gmail.password"))).to_have_attribute("aria-invalid", "")
-    expect(button(tab, "gmail.two-step")).to_be_visible()
+    expect(tab.locator("#gmail-form").get_by_role(
+        "button", name=text("gmail.two-step"), exact=True)).to_be_visible()
     # Gmail can be skipped, for a family whose school mail doesn't come there (ADR 0032).
     expect(skip(tab, "gmail")).to_be_visible()
     expect(source_listed(tab, "gmail", "to-do")).to_be_visible()
@@ -1281,18 +1285,20 @@ def test_the_google_password_opens_the_fold_with_the_2_step_verification_button(
     without_wilma_in_espoo(tab)
     source_listed(tab, "gmail", "to-do").click()
     connect_gmail_at_last(tab)
-    expect(button(tab, "gmail.two-step")).to_be_hidden()
+    fold = tab.locator("#gmail-unavailable")
+    two_step = fold.get_by_role("button", name=text("gmail.two-step"), exact=True)
+    expect(two_step).to_be_hidden()
 
     sign_in_to_gmail(tab, "MyGooglePassword1")
 
     expect(tab.get_by_text(text("gmail.not-an-app-password"))).to_be_visible()
-    expect(tab.locator("#gmail-unavailable")).to_have_attribute("open", "")
+    expect(fold).to_have_attribute("open", "")
     expect(tab.get_by_text(text("gmail.unavailable.two-step"))).to_be_visible()
-    expect(button(tab, "gmail.two-step")).to_be_visible()
+    expect(two_step).to_be_visible()
     # #808: the way out is beside Save, near the message, the only Skip shown.
     gmail_skip_beside_save(tab)
 
-    button(tab, "gmail.two-step").click()
+    two_step.click()
 
     wait_for(lambda: family.desktop.opened == [setup_gmail.TWO_STEP_URL])
 
@@ -1300,6 +1306,26 @@ def test_the_google_password_opens_the_fold_with_the_2_step_verification_button(
 
     expect(source_listed(tab, "gmail", "skipped")).to_be_visible()
     assert json.loads(progress_file(family).read_text())["sources"]["gmail"] == "skipped"
+
+
+def test_the_gmail_step_shows_the_2_step_verification_button_beside_its_precondition(tab, family):
+    # #1078: a parent whose 2-Step Verification is off can turn it on before Google's App
+    # Passwords page turns them away, with no fold to open first.
+    in_english_with_the_gateway(tab)
+    without_wilma_in_espoo(tab)
+    source_listed(tab, "gmail", "to-do").click()
+    connect_gmail_at_last(tab)
+    precondition = tab.locator("#gmail-before li").filter(
+        has_text=text("gmail.before.two-step"))
+    two_step = precondition.get_by_role("button", name=text("gmail.two-step"), exact=True)
+    expect(two_step).to_be_visible()
+    # The fold Google's own error points to keeps its button, still closed.
+    expect(tab.locator("#gmail-unavailable").get_by_role(
+        "button", name=text("gmail.two-step"), exact=True)).to_be_hidden()
+
+    two_step.click()
+
+    wait_for(lambda: family.desktop.opened == [setup_gmail.TWO_STEP_URL])
 
 
 def test_each_language_is_offered_by_its_own_name_and_the_list_follows_a_switch(tab):
