@@ -75,10 +75,11 @@ class Welcome(Phase):
         program = ai.program(self.context, name)
         if program is None:
             missing = claude_missing() if name == "claude" else {"result": "not-installed"}
-            # With the Claude app here, the page says it isn't Claude Code: the family installs
-            # Claude Code from Terminal all the same (#1059).
             if "install" in missing:
+                # What to type after the install to sign in (#1076).
                 missing["sign_in"] = claude_code.sign_in_command()
+                # With the Claude app here, the page says it isn't Claude Code: the family
+                # installs Claude Code from Terminal all the same (#1059).
                 if claude_code.desktop_app():
                     missing["desktop_app"] = True
             return HTTPStatus.OK, {**missing, "ai": name}
