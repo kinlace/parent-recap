@@ -77,10 +77,19 @@ class Welcome(Phase):
             missing = claude_missing() if name == "claude" else {"result": "not-installed"}
             # With the Claude app here, the page says it isn't Claude Code: the family installs
             # Claude Code from Terminal all the same (#1059).
-            if "install" in missing and claude_code.desktop_app():
-                missing["desktop_app"] = True
+            if "install" in missing:
+                missing["sign_in"] = claude_code.sign_in_command()
+                if claude_code.desktop_app():
+                    missing["desktop_app"] = True
             return HTTPStatus.OK, {**missing, "ai": name}
-        return HTTPStatus.OK, {**ai.status(self.context, program, name), "ai": name}
+        out = ai.status(self.context, program, name)
+        # On a Mac the family signs Claude Code in from Terminal, with the path of the `claude`
+        # found: a bare `claude` may not be on the shell's PATH yet (#1076). Windows signs in
+        # at its own step.
+        if (name == "claude" and out["result"] == "signed-out"
+                and "claude" not in profile.current().page_installs):
+            out["sign_in"] = claude_code.sign_in_command(program)
+        return HTTPStatus.OK, {**out, "ai": name}
 
     def save_welcome(self, raw: Any) -> Reply:
         """Saves Welcome's choices: the AI and the partner or only me, and moves setup on

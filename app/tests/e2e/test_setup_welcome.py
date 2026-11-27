@@ -133,7 +133,8 @@ def test_a_missing_claude_code_gets_its_native_installer_and_is_checked_again(ha
 
     assert r.status == 200
     assert r.json() == {"result": "not-installed", "ai": "claude",
-                        "install": "curl -fsSL https://claude.ai/install.sh | bash"}
+                        "install": "curl -fsSL https://claude.ai/install.sh | bash",
+                        "sign_in": "~/.local/bin/claude"}
 
     ai("claude", harness.home / ".local" / "bin")  # the native installer's folder, not on PATH
 
@@ -151,7 +152,8 @@ def test_with_the_claude_app_but_no_claude_code_the_check_says_the_app_is_there(
 
     assert check_ai(page.url, "claude").json() == {
         "result": "not-installed", "ai": "claude", "desktop_app": True,
-        "install": "curl -fsSL https://claude.ai/install.sh | bash"}
+        "install": "curl -fsSL https://claude.ai/install.sh | bash",
+        "sign_in": "~/.local/bin/claude"}
 
     ai("claude")
     assert check_ai(page.url, "claude").json() == {"result": "ready", "ai": "claude"}
@@ -192,11 +194,48 @@ def test_a_signed_out_claude_code_is_caught_and_checked_again(harness, page, ai)
     ai("claude")
     harness.signed_in["claude"] = False
 
-    assert check_ai(page.url, "claude").json() == {"result": "signed-out", "ai": "claude"}
+    assert check_ai(page.url, "claude").json() == {"result": "signed-out", "ai": "claude",
+                                                   "sign_in": "~/bin/claude"}
 
     harness.signed_in["claude"] = True
     assert check_ai(page.url, "claude").json() == {"result": "ready", "ai": "claude"}
     assert not harness.model_calls  # checked with its own status, not a call to the model
+
+
+@pytest.mark.macos
+@pytest.mark.parametrize("folder, said", [
+    (".local/bin", "~/.local/bin/claude"),
+    ("My Tools/bin", "~/'My Tools/bin/claude'"),
+], ids=["native", "space"])
+def test_a_signed_out_claude_code_s_sign_in_names_the_claude_found_in_full(
+        harness, page, ai, monkeypatch, folder, said):
+    # #1076: the window the install ran in, and bash in a new one, may not find a bare `claude`.
+    ai("claude", harness.home / folder)
+    monkeypatch.setenv("PATH", str(harness.home / folder))
+    harness.signed_in["claude"] = False
+
+    assert check_ai(page.url, "claude").json()["sign_in"] == said
+
+
+@pytest.mark.macos
+def test_a_signed_out_claude_code_outside_home_is_named_by_its_full_path(
+        harness, page, ai, tmp_path, monkeypatch):
+    folder = tmp_path / "opt" / "bin"
+    ai("claude", folder)
+    monkeypatch.setenv("PATH", str(folder))
+    harness.signed_in["claude"] = False
+
+    assert check_ai(page.url, "claude").json()["sign_in"] == str(folder / "claude")
+
+
+def test_the_mac_claude_sign_in_texts_type_the_command_and_exit_in_every_language():
+    # #1076: the page fills in the full path of `claude`, not a bare `claude` the shell may miss.
+    for language, table in json.loads((PAGE_DIR / "text.json").read_text()).items():
+        for key in ("ai.claude.not-installed", "ai.claude.signed-out", "ai.claude.not-installed.app"):
+            said = table[key]
+            assert "{command}" in said and "/exit" in said, (language, key)
+            assert not re.search(r"(?<![{/])\bclaude\b(?!\})", said.replace("Claude", "")), (
+                language, key)
 
 
 @pytest.mark.macos

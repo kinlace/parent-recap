@@ -297,7 +297,7 @@ async function checkAI() {
     return;
   }
   if (check !== ai.checking) return; // the parent picked the other one meanwhile
-  showAI(name, out.result, out.install, out.reason, out.desktop_app);
+  showAI(name, out.result, out.install, out.reason, out.desktop_app, out.sign_in);
   if (out.result !== "ready" && !document.getElementById("welcome").hidden) {
     ai.timer = setTimeout(checkAI, RECHECK_MS);
   }
@@ -315,15 +315,15 @@ function welcomeGoesOn(name, result) {
 }
 
 // `desktopApp`: the AI's desktop app is here but isn't the program the Brief runs, so the message
-// says so (the Claude app, #1059).
-function showAI(name, result, install, reason, desktopApp) {
+// says so (the Claude app, #1059). `signIn`: what to type in Terminal to sign in, the full path of
+// Claude Code on a Mac, which a bare `claude` may not find yet (#1076).
+function showAI(name, result, install, reason, desktopApp, signIn) {
   ai.result = result;
   const status = document.getElementById("ai-status");
   status.dataset.result = result;
   const message = document.getElementById("ai-message");
-  message.dataset.text = result === "checking" ? "welcome.ai.checking"
-    : `ai.${name}.${result}${desktopApp ? ".app" : ""}`;
-  message.textContent = t(message.dataset.text);
+  setText(message, result === "checking" ? "welcome.ai.checking"
+    : `ai.${name}.${result}${desktopApp ? ".app" : ""}`, { command: signIn || "claude" });
   showReason("ai", message.dataset.text, reason);
   status.classList.toggle("fail", result === "check-failed");
   document.getElementById("ai-install").hidden = !install;
